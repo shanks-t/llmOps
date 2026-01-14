@@ -9,25 +9,27 @@ authors = [{ name = "Platform Team" }]
 keywords = ["llm", "observability", "tracing", "opentelemetry", "phoenix", "mlflow"]
 
 dependencies = [
-    "opentelemetry-api>=1.20.0",
-    "opentelemetry-sdk>=1.20.0",
-    "opentelemetry-exporter-otlp-proto-http>=1.20.0",
+    "opentelemetry-api>=1.30.0",
+    "opentelemetry-sdk>=1.30.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.30.0",
+    "python-dotenv>=1.0.0",
 ]
 
 [project.optional-dependencies]
 phoenix = [
-    "openinference-instrumentation-google-adk>=0.1.0",
-    "openinference-instrumentation-google-genai>=0.1.0",
+    "openinference-instrumentation-google-adk>=0.1.5",
+    "openinference-instrumentation-google-genai>=0.1.9",
 ]
 mlflow = [
-    "mlflow>=2.10.0",
+    "mlflow>=3.6.0",  # Required for OTLP ingestion support
 ]
 test = [
-    "fastapi>=0.100.0",
-    "uvicorn>=0.20.0",
-    "google-adk>=1.20.0",
-    "google-genai>=1.0.0",
+    "fastapi>=0.115.0",
+    "uvicorn>=0.34.0",
+    "google-adk>=1.21.0",
+    "google-genai>=1.50.0",
     "pytest>=8.0",
+    "pytest-mock>=3.14.0",
 ]
 all = [
     "llmops[phoenix,mlflow,test]",
@@ -42,3 +44,17 @@ packages = ["src/llmops"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[dependency-groups]
+dev = [
+    "bandit>=1.9.2",
+    "mypy>=1.19.1",
+    "ruff>=0.14.11",
+    "types-PyYAML>=6.0.0",
+]

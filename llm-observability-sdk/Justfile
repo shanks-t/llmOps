@@ -1,0 +1,36 @@
+# Justfile for code quality checks
+# Run `just` to execute all checks, or `just <recipe>` for individual checks
+
+# Default recipe runs all quality checks and tests
+default: lint typecheck security test
+
+# Run Ruff linter
+lint:
+    uv run ruff check src/ tests/
+
+# Run Ruff formatter check
+format-check:
+    uv run ruff format --check src/ tests/
+
+# Run Ruff formatter (auto-fix)
+format:
+    uv run ruff format src/ tests/
+
+# Run MyPy type checker
+typecheck:
+    uv run mypy src/
+
+# Run Bandit security scanner
+security:
+    uv run bandit -r src/
+
+# Run pytest
+test:
+    uv run pytest
+
+# Run all checks (alias for default)
+check: default
+
+# Run linter with auto-fix
+lint-fix:
+    uv run ruff check --fix src/ tests/
