@@ -1,36 +1,167 @@
-# Justfile for code quality checks
-# Run `just` to execute all checks, or `just <recipe>` for individual checks
+# Justfile for LLM Ops SDK
+# Run `just` to execute all checks, or `just <recipe>` for individual recipes
+# Run `just --list` to see all available recipes organized by group
 
 # Default recipe runs all quality checks and tests
+[group('quality')]
 default: lint typecheck security test
 
+# =============================================================================
+# Quality Checks
+# =============================================================================
+
 # Run Ruff linter
+[group('quality')]
 lint:
     uv run ruff check src/ tests/
 
 # Run Ruff formatter check
+[group('quality')]
 format-check:
     uv run ruff format --check src/ tests/
 
 # Run Ruff formatter (auto-fix)
+[group('quality')]
 format:
     uv run ruff format src/ tests/
 
 # Run MyPy type checker
+[group('quality')]
 typecheck:
     uv run mypy src/
 
 # Run Bandit security scanner
+[group('quality')]
 security:
     uv run bandit -r src/
 
-# Run pytest
+# Run linter with auto-fix
+[group('quality')]
+lint-fix:
+    uv run ruff check --fix src/ tests/
+
+# =============================================================================
+# Testing
+# =============================================================================
+
+# Run all tests (unit + fast integration, excludes E2E by default via pyproject.toml)
+[group('test')]
 test:
     uv run pytest
 
+# Run unit tests only
+[group('test')]
+test-unit:
+    uv run pytest tests/test_configure.py -v
+
+# Run fast integration tests (no Docker required)
+[group('test')]
+test-integration:
+    uv run pytest tests/integration/ -v -m "not e2e"
+
+# Run E2E tests (requires Docker services)
+[group('test')]
+test-e2e:
+    uv run pytest tests/integration/ -v -m e2e
+
+# Run all tests including E2E (requires Docker services)
+[group('test')]
+test-all:
+    uv run pytest tests/ -v -m ""
+
 # Run all checks (alias for default)
+[group('test')]
 check: default
 
-# Run linter with auto-fix
-lint-fix:
-    uv run ruff check --fix src/ tests/
+# =============================================================================
+# Test Infrastructure
+# =============================================================================
+
+# Start test Docker services (Phoenix + MLflow on different ports)
+[group('test')]
+start-test-backends:
+    docker-compose -f docker/docker-compose.test.yml up -d
+    @echo "Waiting for services to be healthy..."
+    @sleep 10
+    @echo "Test backends ready: Phoenix at :16006, MLflow at :15001"
+
+# Stop test Docker services
+[group('test')]
+stop-test-backends:
+    docker-compose -f docker/docker-compose.test.yml down
+
+# Run E2E tests with Docker (full workflow)
+[group('test')]
+test-e2e-full: start-test-backends
+    uv run pytest tests/integration/ -v -m e2e || true
+    just stop-test-backends
+
+# =============================================================================
+# Server & Backends
+# =============================================================================
+
+# Run example server (optionally override backend: phoenix or mlflow)
+[group('server')]
+run-example backend="":
+    #!/usr/bin/env bash
+    if [ -n "{{backend}}" ]; then
+        export LLMOPS_BACKEND="{{backend}}"
+    fi
+    uv run uvicorn examples.server:app --reload
+
+# Start Phoenix backend (Arize)
+[group('server')]
+start-phoenix:
+    cd docker && docker-compose up phoenix -d
+
+# Start MLflow backend
+[group('server')]
+start-mlflow:
+    cd docker && docker-compose up mlflow -d
+
+# Start all backends
+[group('server')]
+start-backends:
+    cd docker && docker-compose up -d
+
+# Stop all backends
+[group('server')]
+stop-backends:
+    cd docker && docker-compose down
+
+# =============================================================================
+# Endpoint Examples
+# =============================================================================
+
+# Test /chat endpoint - simple single-turn LLM conversation
+[group('examples')]
+chat message="What is the capital of France?":
+    curl -s -X POST http://localhost:8000/chat \
+        -H "Content-Type: application/json" \
+        -d '{"message": "{{message}}"}' | jq
+
+# Test /travel endpoint - multi-tool travel agent
+[group('examples')]
+travel query="Plan a weekend trip to Tokyo":
+    curl -s -X POST http://localhost:8000/travel \
+        -H "Content-Type: application/json" \
+        -d '{"query": "{{query}}"}' | jq
+
+# Test /code endpoint - code generation, explanation, or review
+[group('examples')]
+code task="generate" prompt="Write a Python function to calculate fibonacci numbers":
+    curl -s -X POST http://localhost:8000/code \
+        -H "Content-Type: application/json" \
+        -d '{"task": "{{task}}", "prompt": "{{prompt}}"}' | jq
+
+# Test /research endpoint - sequential RAG workflow
+[group('examples')]
+research topic="quantum computing applications":
+    curl -s -X POST http://localhost:8000/research \
+        -H "Content-Type: application/json" \
+        -d '{"topic": "{{topic}}"}' | jq
+
+# Test /stream endpoint - streaming response via SSE
+[group('examples')]
+stream prompt="Explain how photosynthesis works":
+    curl -N "http://localhost:8000/stream?prompt={{prompt}}"

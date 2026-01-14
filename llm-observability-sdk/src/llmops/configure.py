@@ -208,9 +208,10 @@ def _setup_mlflow(endpoint: str, service_name: str, console: bool = False):
     mlflow.set_tracking_uri(endpoint)
     print(f"llmops: MLflow tracking URI: {endpoint}")
 
-    # Set experiment (creates if doesn't exist)
-    mlflow.set_experiment(service_name)
-    print(f"llmops: MLflow experiment: {service_name}")
+    # Set experiment (creates if doesn't exist) and get experiment ID
+    experiment = mlflow.set_experiment(service_name)
+    experiment_id = experiment.experiment_id
+    print(f"llmops: MLflow experiment: {service_name} (id: {experiment_id})")
 
     # Enable MLflow tracing
     mlflow.tracing.enable()
@@ -218,11 +219,15 @@ def _setup_mlflow(endpoint: str, service_name: str, console: bool = False):
 
     # Setup OTLP exporter for ADK tracing to MLflow
     # MLflow 3.6.0+ supports OTLP ingestion at /v1/traces
+    # Requires x-mlflow-experiment-id header for trace association
     otlp_endpoint = f"{endpoint.rstrip('/')}/v1/traces"
     resource = Resource.create({SERVICE_NAME: service_name})
     provider = TracerProvider(resource=resource)
 
-    exporter = OTLPSpanExporter(endpoint=otlp_endpoint)
+    exporter = OTLPSpanExporter(
+        endpoint=otlp_endpoint,
+        headers={"x-mlflow-experiment-id": experiment_id},
+    )
     provider.add_span_processor(BatchSpanProcessor(exporter))
     trace.set_tracer_provider(provider)
     print(f"llmops: OTLP endpoint for ADK tracing: {otlp_endpoint}")

@@ -30,6 +30,7 @@ test = [
     "google-genai>=1.50.0",
     "pytest>=8.0",
     "pytest-mock>=3.14.0",
+    "httpx>=0.27.0",
 ]
 all = [
     "llmops[phoenix,mlflow,test]",
@@ -44,6 +45,10 @@ packages = ["src/llmops"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "e2e: end-to-end tests requiring Docker services (Phoenix/MLflow)",
+]
+addopts = "-m 'not e2e'"
 
 [tool.mypy]
 python_version = "3.12"

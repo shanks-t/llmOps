@@ -1,0 +1,45 @@
+# Docker Compose for E2E integration tests
+# Usage: docker-compose -f docker/docker-compose.test.yml up -d
+#
+# Uses different ports to avoid conflicts with dev environment:
+# - Phoenix: 16006 (dev uses 6006)
+# - MLflow: 15001 (dev uses 5001)
+#
+# No persistent volumes - clean state for each test run
+
+version: "3.8"
+
+services:
+  phoenix-test:
+    image: arizephoenix/phoenix:latest
+    platform: linux/arm64
+    ports:
+      - "16006:6006"
+    environment:
+      - PHOENIX_WORKING_DIR=/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6006/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  mlflow-test:
+    image: ghcr.io/mlflow/mlflow:latest
+    platform: linux/arm64
+    ports:
+      - "15001:5000"
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri sqlite:///mlflow/mlflow.db
+      --default-artifact-root /mlflow/artifacts
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+# No volumes - tests use ephemeral storage for clean state
