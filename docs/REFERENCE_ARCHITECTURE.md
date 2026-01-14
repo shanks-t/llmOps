@@ -25,7 +25,8 @@ This is the "how systems like this should be built" document.
 
 | Layer | Responsibility | Stability | Dependencies |
 |-------|---------------|-----------|--------------|
-| **L4: Public API** | Developer-facing decorators and functions | Stable | L3 |
+| **L5: Public API** | Developer-facing init(), decorators, enrichment | Stable | L4, L3 |
+| **L4: Auto-instrumentation** | Backend instrumentor orchestration | Stable | L1, L0 |
 | **L3: Semantic Model** | SemanticKind, span lifecycle, context | Stable contract | L2 |
 | **L2: OTel Mapping** | Translate to gen_ai.* attributes | Internal | L1 |
 | **L1: Adapters** | Backend-specific translation | Maintained | L0 |
@@ -36,7 +37,9 @@ This is the "how systems like this should be built" document.
 **Strict downward-only dependencies:**
 
 ```
-L4 → L3 → L2 → L1 → L0
+L5 → L4 → L3 → L2 → L1 → L0
+     ↓              ↑
+     └──────────────┘ (L4 also depends on L1 for backend config)
 ```
 
 - Higher layers may depend on lower layers
@@ -53,6 +56,135 @@ Inspired by [OpenTelemetry's design](https://opentelemetry.io/docs/specs/otel/li
 | **SDK Package** | Span processors, adapters, configuration | API + OpenTelemetry |
 
 **Key property:** Application code depends only on API package. SDK package can be swapped or omitted (no-op mode).
+
+### 2.4 Auto-instrumentation Layer (L4)
+
+The auto-instrumentation layer orchestrates backend-provided instrumentors based on configuration.
+
+#### 2.4.1 Supported Backends and Instrumentors
+
+| Backend | Instrumentor Source | Libraries Supported |
+|---------|--------------------|--------------------|
+| **Arize Phoenix** | OpenInference | OpenAI, Anthropic, LangChain, LlamaIndex, Google GenAI, Bedrock, Mistral, Groq, VertexAI |
+| **MLflow** | MLflow native | OpenAI, Anthropic, LangChain, LlamaIndex, AutoGen, DSPy, Google GenAI |
+
+#### 2.4.2 init() Function
+
+The `init()` function is the single entry point for auto-instrumentation:
+
+```python
+def init(
+    config_path: str | None = None,
+    *,
+    backend: Literal["phoenix", "mlflow"] | None = None,
+    auto_instrument: bool = True,
+    **backend_kwargs,
+) -> None:
+    """
+    Initialize the SDK with auto-instrumentation.
+
+    Args:
+        config_path: Path to YAML config file. Defaults to ./llmops.yaml
+        backend: Override backend from config (phoenix or mlflow)
+        auto_instrument: Enable auto-instrumentation (default True)
+        **backend_kwargs: Backend-specific configuration overrides
+
+    Raises:
+        ConfigurationError: If config is invalid (at startup, not runtime)
+    """
+```
+
+#### 2.4.3 Initialization Flow
+
+```python
+# Internal implementation (simplified)
+
+def init(config_path=None, *, backend=None, auto_instrument=True, **kwargs):
+    # 1. Load and validate configuration
+    config = _load_config(config_path)
+    config = _apply_overrides(config, backend=backend, **kwargs)
+    _validate_config(config)  # Raises ConfigurationError if invalid
+
+    # 2. Initialize OpenTelemetry TracerProvider
+    _init_tracer_provider(config)
+
+    # 3. Initialize backend adapter and exporter
+    adapter = _create_adapter(config.backend)
+    _register_exporter(adapter)
+
+    # 4. Enable auto-instrumentation if requested
+    if auto_instrument:
+        _init_auto_instrumentation(config)
+
+    # 5. Store global state
+    _set_global_config(config)
+
+
+def _init_auto_instrumentation(config: Config) -> None:
+    """Initialize backend-specific auto-instrumentors."""
+
+    if config.backend == "phoenix":
+        _init_phoenix_instrumentors(config)
+    elif config.backend == "mlflow":
+        _init_mlflow_instrumentors(config)
+
+
+def _init_phoenix_instrumentors(config: Config) -> None:
+    """Initialize OpenInference instrumentors for Phoenix."""
+    from openinference.instrumentation import auto_instrument_all
+
+    # Get disabled instrumentors from config
+    disabled = set(config.auto_instrumentation.disabled or [])
+
+    # auto_instrument_all enables all available instrumentors
+    # We filter based on config
+    auto_instrument_all(
+        tracer_provider=_get_tracer_provider(),
+        skip=disabled,
+    )
+
+
+def _init_mlflow_instrumentors(config: Config) -> None:
+    """Initialize MLflow auto-instrumentation."""
+    import mlflow
+
+    # MLflow's autolog enables instrumentation for all supported libraries
+    disabled = set(config.auto_instrumentation.disabled or [])
+
+    mlflow.tracing.enable(
+        tracer_provider=_get_tracer_provider(),
+        exclude=disabled,
+    )
+```
+
+#### 2.4.4 Auto-instrumentation Invariants
+
+```
+INVARIANT A1: Auto-instrumentation never modifies application behavior
+```
+
+**Rules:**
+- Instrumentors MUST NOT change function return values
+- Instrumentors MUST NOT change exception propagation
+- Library patching happens at init() time, not at call time
+
+```
+INVARIANT A2: Auto-instrumentation failures are non-fatal
+```
+
+**Rules:**
+- Missing instrumentor packages log warning, continue without
+- Individual instrumentor failures don't prevent others from loading
+- Application starts successfully even if no instrumentors load
+
+```
+INVARIANT A3: Manual instrumentation takes precedence
+```
+
+**Rules:**
+- Decorated functions create their own spans
+- Auto-instrumentation spans nest under manual spans when applicable
+- Duplicate instrumentation avoided via context propagation
 
 ---
 
@@ -793,10 +925,62 @@ def configure(config_path: str = None, **kwargs):
 | Field | Required | Default |
 |-------|----------|---------|
 | `service.name` | Yes | — |
-| `backends` | Yes (at least one) | — |
+| `backend` | Yes | — |
 | `privacy.capture_content` | No | `false` |
-| `custom_attributes.namespace` | No | `"custom"` |
-| `validation.mode` | No | `"permissive"` |
+| `auto_instrumentation.enabled` | No | `true` |
+| `auto_instrumentation.disabled` | No | `[]` |
+
+### 10.4 Auto-instrumentation Configuration
+
+```yaml
+# llmops.yaml - Phoenix backend example
+service:
+  name: my-llm-app
+  version: 1.0.0
+
+backend: phoenix
+
+phoenix:
+  endpoint: http://localhost:6006
+  project_name: my-project
+
+auto_instrumentation:
+  enabled: true
+  disabled: []  # List of instrumentors to skip, e.g., ["langchain", "llamaindex"]
+
+privacy:
+  capture_content: false
+```
+
+```yaml
+# llmops.yaml - MLflow backend example
+service:
+  name: my-llm-app
+  version: 1.0.0
+
+backend: mlflow
+
+mlflow:
+  tracking_uri: http://localhost:5000
+  experiment_name: my-experiment
+
+auto_instrumentation:
+  enabled: true
+  disabled: []
+
+privacy:
+  capture_content: false
+```
+
+#### Environment Variable Overrides
+
+| Environment Variable | Config Path | Example |
+|---------------------|-------------|---------|
+| `LLMOPS_BACKEND` | `backend` | `phoenix` |
+| `LLMOPS_PHOENIX_ENDPOINT` | `phoenix.endpoint` | `http://localhost:6006` |
+| `LLMOPS_MLFLOW_TRACKING_URI` | `mlflow.tracking_uri` | `http://localhost:5000` |
+| `LLMOPS_AUTO_INSTRUMENT` | `auto_instrumentation.enabled` | `true` |
+| `LLMOPS_CAPTURE_CONTENT` | `privacy.capture_content` | `false` |
 
 ---
 

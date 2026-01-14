@@ -25,13 +25,17 @@ This document defines the **public API contracts** for the LLM Observability SDK
 ```
 llmops/
 ├── __init__.py          # Public API exports
+├── init.py              # init() for auto-instrumentation
 ├── decorators.py        # @llm, @tool, @agent, @retrieve
 ├── enrichment.py        # set_input, set_output, set_tokens, emit_chunk
 ├── types.py             # SemanticKind, TokenUsage, etc.
-├── config.py            # configure(), Configuration
+├── config.py            # Configuration dataclasses
 └── _internal/           # Not part of public API
     ├── context.py       # Context propagation
     ├── spans.py         # Span management
+    ├── auto_instrument/ # Backend-specific instrumentor setup
+    │   ├── phoenix.py   # OpenInference instrumentors
+    │   └── mlflow.py    # MLflow tracing setup
     └── adapters/        # Backend adapters
 ```
 
@@ -39,7 +43,10 @@ llmops/
 ```python
 import llmops
 
-# All public API accessible from top-level
+# Auto-instrumentation (quick start)
+llmops.init()  # Uses config from llmops.yaml
+
+# Manual instrumentation (fine-grained control)
 @llmops.llm(model="gpt-4o")
 async def generate(prompt: str) -> str:
     llmops.set_input(prompt)
@@ -589,14 +596,33 @@ class TokenUsage:
 
 ### 5.3 `Configuration`
 
-Configuration data structure.
+Configuration data structures.
 
 ```python
 from dataclasses import dataclass, field
+from typing import Literal
+
+@dataclass
+class PhoenixConfig:
+    """Configuration for Arize Phoenix backend."""
+    endpoint: str
+    project_name: str | None = None
+
+@dataclass
+class MLflowConfig:
+    """Configuration for MLflow backend."""
+    tracking_uri: str
+    experiment_name: str | None = None
+
+@dataclass
+class AutoInstrumentationConfig:
+    """Auto-instrumentation settings."""
+    enabled: bool = True
+    disabled: list[str] = field(default_factory=list)  # Instrumentors to skip
 
 @dataclass
 class BackendConfig:
-    """Configuration for a single backend."""
+    """Configuration for a single backend (used with configure())."""
     type: str  # "otlp", "mlflow", "phoenix"
     endpoint: str
     headers: dict[str, str] = field(default_factory=dict)
@@ -620,14 +646,29 @@ class Configuration:
     Attributes:
         service_name: Name of the service (required).
         service_version: Version of the service.
-        backends: List of backend configurations.
+        backend: Primary backend for auto-instrumentation ("phoenix" or "mlflow").
+        phoenix: Phoenix-specific configuration.
+        mlflow: MLflow-specific configuration.
+        auto_instrumentation: Auto-instrumentation settings.
+        backends: List of backend configurations (for configure() multi-backend).
         privacy: Privacy settings.
         validation: Validation mode settings.
         custom_namespace: Namespace for custom attributes.
     """
     service_name: str
     service_version: str | None = None
+
+    # For init() - single backend with auto-instrumentation
+    backend: Literal["phoenix", "mlflow"] | None = None
+    phoenix: PhoenixConfig | None = None
+    mlflow: MLflowConfig | None = None
+    auto_instrumentation: AutoInstrumentationConfig = field(
+        default_factory=AutoInstrumentationConfig
+    )
+
+    # For configure() - multiple backends
     backends: list[BackendConfig] = field(default_factory=list)
+
     privacy: PrivacyConfig = field(default_factory=PrivacyConfig)
     validation: ValidationConfig = field(default_factory=ValidationConfig)
     custom_namespace: str = "custom"
@@ -635,11 +676,88 @@ class Configuration:
 
 ---
 
-## 6. Configuration API
+## 6. Initialization & Configuration API
 
-### 6.1 `configure()`
+### 6.1 `init()` — Auto-Instrumentation Entry Point
 
-Initialize the SDK with configuration.
+Initialize the SDK with auto-instrumentation enabled. This is the **recommended quick-start** for most applications.
+
+**Signature:**
+```python
+def init(
+    config_path: str | Path | None = None,
+    *,
+    backend: Literal["phoenix", "mlflow"] | None = None,
+    auto_instrument: bool = True,
+    capture_content: bool | None = None,
+    **backend_kwargs,
+) -> None:
+    """
+    Initialize the SDK with auto-instrumentation.
+
+    This single call:
+    1. Loads configuration from YAML file
+    2. Initializes OpenTelemetry TracerProvider
+    3. Sets up backend-specific exporter
+    4. Enables auto-instrumentation for all supported libraries
+
+    Args:
+        config_path: Path to YAML config file.
+                     Defaults to ./llmops.yaml in current directory.
+        backend: Override backend from config ("phoenix" or "mlflow").
+        auto_instrument: Enable auto-instrumentation (default True).
+                        Set to False for manual-only instrumentation.
+        capture_content: Override content capture setting.
+        **backend_kwargs: Backend-specific configuration overrides
+                         (e.g., endpoint, project_name for Phoenix).
+
+    Raises:
+        ConfigurationError: If configuration is invalid.
+                           Only raised at startup, never during operation.
+
+    Supported Backends and Auto-Instrumented Libraries:
+
+        Phoenix (OpenInference):
+            OpenAI, Anthropic, LangChain, LlamaIndex, Google GenAI,
+            Bedrock, Mistral, Groq, VertexAI
+
+        MLflow:
+            OpenAI, Anthropic, LangChain, LlamaIndex, AutoGen,
+            DSPy, Google GenAI
+
+    Examples:
+        # Minimal setup (uses ./llmops.yaml)
+        llmops.init()
+
+        # Override backend programmatically
+        llmops.init(backend="phoenix", endpoint="http://localhost:6006")
+
+        # Disable auto-instrumentation (manual only)
+        llmops.init(auto_instrument=False)
+    """
+```
+
+**Quick Start Example:**
+```python
+# llmops.yaml
+# backend: phoenix
+# phoenix:
+#   endpoint: http://localhost:6006
+
+import llmops
+llmops.init()  # That's it!
+
+# All LLM library calls are now automatically traced
+response = openai.chat.completions.create(
+    model="gpt-4o",
+    messages=[{"role": "user", "content": "Hello!"}]
+)
+# ^ Automatically creates a span with model, tokens, input/output
+```
+
+### 6.2 `configure()` — Manual Configuration
+
+Initialize the SDK with explicit configuration. Use this for advanced setups or when you need fine-grained control.
 
 **Signature:**
 ```python
@@ -655,7 +773,13 @@ def configure(
     **kwargs,
 ) -> None:
     """
-    Initialize the LLM Observability SDK.
+    Initialize the LLM Observability SDK with manual configuration.
+
+    Note: For most use cases, prefer init() which provides auto-instrumentation.
+    Use configure() when you need:
+    - Multiple backends simultaneously
+    - Test mode for unit testing
+    - Fine-grained validation settings
 
     Configuration is loaded in order (later overrides earlier):
     1. Default values
@@ -688,17 +812,65 @@ def configure(
     """
 ```
 
-### 6.2 YAML Configuration Schema
+### 6.3 YAML Configuration Schema
+
+The configuration format differs slightly depending on whether you use `init()` (auto-instrumentation) or `configure()` (manual setup).
+
+#### For `init()` (Auto-Instrumentation)
 
 ```yaml
-# llmops.yaml
-
-# Required: Service identification
+# llmops.yaml - Phoenix backend
 service:
   name: "my-agent-service"
   version: "1.0.0"
 
-# Required: At least one backend
+# Required: Single backend for auto-instrumentation
+backend: phoenix  # or "mlflow"
+
+# Backend-specific configuration
+phoenix:
+  endpoint: http://localhost:6006
+  project_name: my-project  # Optional
+
+# Optional: Auto-instrumentation settings
+auto_instrumentation:
+  enabled: true  # Default: true
+  disabled: []   # List of instrumentors to skip, e.g., ["langchain"]
+
+# Optional: Privacy settings
+privacy:
+  capture_content: false  # Default: false
+```
+
+```yaml
+# llmops.yaml - MLflow backend
+service:
+  name: "my-agent-service"
+  version: "1.0.0"
+
+backend: mlflow
+
+mlflow:
+  tracking_uri: http://localhost:5000
+  experiment_name: my-experiment  # Optional
+
+auto_instrumentation:
+  enabled: true
+  disabled: []
+
+privacy:
+  capture_content: false
+```
+
+#### For `configure()` (Manual Setup / Multiple Backends)
+
+```yaml
+# llmops.yaml - Multiple backends
+service:
+  name: "my-agent-service"
+  version: "1.0.0"
+
+# Multiple backends supported
 backends:
   - type: phoenix
     endpoint: http://localhost:6006/v1/traces
@@ -711,31 +883,32 @@ backends:
     headers:
       Authorization: "Bearer ${OTLP_TOKEN}"  # Env var substitution
 
-# Optional: Privacy settings
 privacy:
-  capture_content: false  # Default: false
+  capture_content: false
 
-# Optional: Validation settings
 validation:
   mode: permissive  # "permissive" or "strict"
   fail_on_warnings: false
 
-# Optional: Custom attribute namespace
 custom:
   namespace: "custom"  # Prefix for set_metadata() attributes
 ```
 
-### 6.3 Environment Variables
+### 6.4 Environment Variables
 
 | Variable | Overrides | Example |
 |----------|-----------|---------|
+| `LLMOPS_BACKEND` | `backend` | `phoenix` |
+| `LLMOPS_PHOENIX_ENDPOINT` | `phoenix.endpoint` | `http://localhost:6006` |
+| `LLMOPS_MLFLOW_TRACKING_URI` | `mlflow.tracking_uri` | `http://localhost:5000` |
+| `LLMOPS_AUTO_INSTRUMENT` | `auto_instrumentation.enabled` | `true` |
 | `LLMOPS_SERVICE_NAME` | `service.name` | `my-agent` |
 | `LLMOPS_SERVICE_VERSION` | `service.version` | `1.0.0` |
 | `LLMOPS_CAPTURE_CONTENT` | `privacy.capture_content` | `true` |
 | `LLMOPS_VALIDATION_MODE` | `validation.mode` | `strict` |
 | `LLMOPS_CONFIG_PATH` | Config file path | `./config/llmops.yaml` |
 
-### 6.4 `get_test_spans()`
+### 6.5 `get_test_spans()`
 
 Retrieve spans captured in test mode.
 
@@ -762,7 +935,7 @@ def get_test_spans() -> list[TestSpan]:
     """
 ```
 
-### 6.5 `clear_test_spans()`
+### 6.6 `clear_test_spans()`
 
 Clear captured test spans.
 
@@ -833,7 +1006,7 @@ def session(session_id: str):
 
 | Category | Source | SDK Behavior |
 |----------|--------|--------------|
-| **Configuration Error** | Invalid config | Raised at `configure()` |
+| **Configuration Error** | Invalid config | Raised at `init()` or `configure()` |
 | **Telemetry Error** | SDK internal failure | Logged, operation continues |
 | **Application Error** | User code exception | Propagated unchanged |
 
@@ -846,16 +1019,17 @@ class ConfigurationError(Exception):
     """
     Raised when SDK configuration is invalid.
 
-    Only raised during configure(), never during normal operation.
+    Only raised during init() or configure(), never during normal operation.
     """
     pass
 ```
 
 **Examples of configuration errors:**
 - Missing required `service.name`
-- No backends configured
+- No backend configured (for `init()`)
 - Invalid backend type
 - Malformed YAML
+- Invalid instrumentor name in `disabled` list
 
 ### 8.3 Telemetry Error Isolation
 
@@ -877,7 +1051,112 @@ def set_input(value: Any) -> None:
 
 ## 9. Complete Examples
 
-### 9.1 Basic LLM Call
+### 9.1 Auto-Instrumentation Quick Start (Phoenix)
+
+```yaml
+# llmops.yaml
+service:
+  name: my-service
+
+backend: phoenix
+
+phoenix:
+  endpoint: http://localhost:6006
+```
+
+```python
+import llmops
+from openai import OpenAI
+
+# Initialize auto-instrumentation
+llmops.init()
+
+# That's it! All OpenAI calls are now automatically traced
+client = OpenAI()
+
+def chat(message: str) -> str:
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[{"role": "user", "content": message}]
+    )
+    return response.choices[0].message.content
+
+# This call is automatically traced with:
+# - Model name
+# - Input/output tokens
+# - Latency
+# - Input/output content (if capture_content enabled)
+result = chat("What is the capital of France?")
+```
+
+### 9.2 Auto-Instrumentation Quick Start (MLflow)
+
+```yaml
+# llmops.yaml
+service:
+  name: my-service
+
+backend: mlflow
+
+mlflow:
+  tracking_uri: http://localhost:5000
+  experiment_name: my-experiment
+```
+
+```python
+import llmops
+from anthropic import Anthropic
+
+llmops.init()
+
+# Anthropic calls are also auto-traced
+client = Anthropic()
+
+def ask_claude(question: str) -> str:
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=1024,
+        messages=[{"role": "user", "content": question}]
+    )
+    return response.content[0].text
+
+result = ask_claude("Explain quantum computing")
+```
+
+### 9.3 Auto + Manual Instrumentation Combined
+
+```python
+import llmops
+from openai import AsyncOpenAI
+
+# Enable auto-instrumentation
+llmops.init()
+
+client = AsyncOpenAI()
+
+# Manual span for custom business logic
+@llmops.agent(name="research-agent")
+async def research(query: str) -> str:
+    llmops.set_input(query)
+    llmops.set_metadata(query_type="research", priority="high")
+
+    # These OpenAI calls are auto-traced AND nested under research-agent
+    plan = await client.chat.completions.create(
+        model="gpt-4o",
+        messages=[{"role": "user", "content": f"Create research plan for: {query}"}]
+    )
+
+    results = await client.chat.completions.create(
+        model="gpt-4o",
+        messages=[{"role": "user", "content": f"Execute plan: {plan.choices[0].message.content}"}]
+    )
+
+    output = results.choices[0].message.content
+    llmops.set_output(output)
+    return output
+```
+
+### 9.4 Basic LLM Call (Manual Instrumentation)
 
 ```python
 import llmops
@@ -909,7 +1188,7 @@ async def summarize(text: str) -> str:
     return result
 ```
 
-### 9.2 Streaming Response
+### 9.5 Streaming Response
 
 ```python
 @llmops.llm(model="gpt-4o")
@@ -933,7 +1212,7 @@ async def stream_response(prompt: str):
     llmops.set_output("".join(chunks))
 ```
 
-### 9.3 Agent Workflow
+### 9.6 Agent Workflow
 
 ```python
 @llmops.agent(name="research-agent")
@@ -964,7 +1243,7 @@ async def analyze(docs: list[Document]) -> str:
     return result
 ```
 
-### 9.4 Tool Execution with Error Handling
+### 9.7 Tool Execution with Error Handling
 
 ```python
 @llmops.tool(name="database-query")
@@ -980,20 +1259,26 @@ async def query_database(sql: str) -> list[dict]:
         raise  # Always re-raise application errors
 ```
 
-### 9.5 FastAPI Integration
+### 9.8 FastAPI Integration
 
 ```python
 from fastapi import FastAPI, Depends
+import llmops
 
 app = FastAPI()
 
 @app.on_event("startup")
 async def startup():
-    llmops.configure(
-        service_name="my-api",
-        backends=[{"type": "phoenix", "endpoint": "http://localhost:6006/v1/traces"}]
-    )
+    # Auto-instrumentation: all LLM calls traced automatically
+    llmops.init()
 
+@app.post("/chat")
+async def chat(message: str):
+    # OpenAI calls here are auto-traced
+    response = await openai_client.chat.completions.create(...)
+    return {"response": response.choices[0].message.content}
+
+# Manual instrumentation still works with FastAPI DI
 @llmops.llm(model="gpt-4o")
 async def generate_response(prompt: str, db: Database = Depends(get_db)) -> str:
     # FastAPI DI still works - signature preserved
@@ -1001,7 +1286,7 @@ async def generate_response(prompt: str, db: Database = Depends(get_db)) -> str:
     ...
 ```
 
-### 9.6 Testing
+### 9.9 Testing
 
 ```python
 import pytest
@@ -1108,7 +1393,10 @@ async def stream(prompt: str):
 
 ## 11. Public API Summary
 
-### Decorators
+### Initialization (Auto-Instrumentation)
+- `llmops.init(config_path?, backend?, auto_instrument?, capture_content?, **backend_kwargs)` — **Recommended entry point**
+
+### Decorators (Manual Instrumentation)
 - `@llmops.llm(model, name?, capture?)`
 - `@llmops.tool(name?, capture?)`
 - `@llmops.agent(name?, capture?)`
@@ -1123,8 +1411,8 @@ async def stream(prompt: str):
 - `llmops.set_error(error, message?)`
 - `llmops.set_metadata(**kwargs)`
 
-### Configuration
-- `llmops.configure(...)`
+### Configuration (Advanced)
+- `llmops.configure(...)` — For multi-backend or test mode setups
 - `llmops.get_test_spans()`
 - `llmops.clear_test_spans()`
 
@@ -1136,6 +1424,9 @@ async def stream(prompt: str):
 - `llmops.SemanticKind`
 - `llmops.TokenUsage`
 - `llmops.Configuration`
+- `llmops.PhoenixConfig`
+- `llmops.MLflowConfig`
+- `llmops.AutoInstrumentationConfig`
 - `llmops.ConfigurationError`
 
 ---
