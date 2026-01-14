@@ -64,13 +64,10 @@ def _setup_tracer_provider(otlp_configs: list[dict], service_name: str):
 
 
 def _enable_instrumentors(provider) -> None:
-    """Enable all available instrumentors."""
-    # OpenInference instrumentors
+    """Enable all available LLM instrumentors."""
+    # OpenInference instrumentors for LLM/AI frameworks
     _try_instrument("openinference.instrumentation.google_adk", "GoogleADKInstrumentor", provider)
     _try_instrument("openinference.instrumentation.google_genai", "GoogleGenAIInstrumentor", provider)
-
-    # OpenTelemetry instrumentors
-    _try_instrument_otel("opentelemetry.instrumentation.fastapi", "FastAPIInstrumentor")
 
 
 def _try_instrument(module_path: str, class_name: str, provider) -> None:
@@ -80,20 +77,6 @@ def _try_instrument(module_path: str, class_name: str, provider) -> None:
         instrumentor_class = getattr(module, class_name)
         instrumentor = instrumentor_class()
         instrumentor.instrument(tracer_provider=provider)
-        print(f"llmops: Enabled {class_name}")
-    except ImportError:
-        print(f"llmops: {class_name} not installed, skipping")
-    except Exception as e:
-        print(f"llmops: Failed to enable {class_name}: {e}")
-
-
-def _try_instrument_otel(module_path: str, class_name: str) -> None:
-    """Try to enable an OpenTelemetry instrumentor."""
-    try:
-        module = __import__(module_path, fromlist=[class_name])
-        instrumentor_class = getattr(module, class_name)
-        instrumentor = instrumentor_class()
-        instrumentor.instrument()
         print(f"llmops: Enabled {class_name}")
     except ImportError:
         print(f"llmops: {class_name} not installed, skipping")

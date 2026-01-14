@@ -18,7 +18,6 @@ dependencies = [
 phoenix = [
     "openinference-instrumentation-google-adk>=0.1.0",
     "openinference-instrumentation-google-genai>=0.1.0",
-    "opentelemetry-instrumentation-fastapi>=0.40b0",
 ]
 mlflow = [
     "mlflow>=2.10.0",
