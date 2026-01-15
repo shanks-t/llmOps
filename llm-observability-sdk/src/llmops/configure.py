@@ -4,9 +4,14 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, Sequence
+
+if TYPE_CHECKING:
+    from opentelemetry.sdk.trace import ReadableSpan
+    from opentelemetry.sdk.trace.export import SpanExportResult
 
 import yaml
+from opentelemetry.sdk.trace.export import SpanExporter
 
 
 class ConfigurationError(Exception):
@@ -182,6 +187,241 @@ def _enable_openinference_instrumentors(provider) -> None:
 # MLflow Backend (OTLP-based tracing for Google ADK)
 # =============================================================================
 
+
+class RootSpanEnrichingExporter(SpanExporter):
+    """SpanExporter wrapper that enriches root spans with child span inputs/outputs.
+
+    MLflow's Traces UI shows Request/Response columns from the root span's
+    mlflow.spanInputs and mlflow.spanOutputs attributes. Google ADK traces
+    only set these on leaf spans (call_llm), leaving root spans empty.
+
+    This exporter buffers spans by trace_id and propagates the first
+    mlflow.spanInputs/spanOutputs found in children to the root span
+    before forwarding to the underlying exporter.
+
+    Implements the SpanExporter protocol for compatibility with SpanProcessors.
+    """
+
+    def __init__(
+        self, wrapped_exporter: SpanExporter, timeout_seconds: float = 30.0
+    ) -> None:
+        """Initialize the enriching exporter.
+
+        Args:
+            wrapped_exporter: The underlying SpanExporter to forward spans to.
+            timeout_seconds: Max time to buffer spans before force-exporting.
+        """
+        import threading
+        import time
+
+        self._wrapped = wrapped_exporter
+        self._timeout = timeout_seconds
+        self._lock = threading.Lock()
+        # trace_id -> {"spans": [...], "timestamp": float}
+        self._buffer: dict[str, dict[str, Any]] = {}
+        self._time = time
+
+    def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
+        """Buffer spans and export complete traces with enriched root spans."""
+        from opentelemetry.sdk.trace.export import SpanExportResult
+
+        for span in spans:
+            trace_id = format(span.context.trace_id, "032x")
+
+            with self._lock:
+                if trace_id not in self._buffer:
+                    self._buffer[trace_id] = {
+                        "spans": [],
+                        "timestamp": self._time.time(),
+                    }
+                self._buffer[trace_id]["spans"].append(span)
+
+                # Check if this is the root span (no parent)
+                if span.parent is None:
+                    # Root span arrived - enrich and export entire trace
+                    trace_data = self._buffer.pop(trace_id)
+                    self._export_enriched_trace(trace_data["spans"])
+
+        # Clean up stale traces (timeout protection)
+        self._cleanup_stale_traces()
+
+        return SpanExportResult.SUCCESS
+
+    def _export_enriched_trace(self, spans: list) -> None:
+        """Enrich root span with child inputs/outputs and export."""
+        # Find root span and collect inputs/outputs from children
+        # Google ADK uses gcp.vertex.agent.llm_request/llm_response
+        # MLflow transforms these to mlflow.spanInputs/spanOutputs on ingestion
+        # We need to look for the source attributes and add the mlflow ones
+        root_span = None
+        first_inputs = None
+        first_outputs = None
+
+        # Attribute names to check (in priority order)
+        input_attrs = ["mlflow.spanInputs", "gcp.vertex.agent.llm_request"]
+        output_attrs = ["mlflow.spanOutputs", "gcp.vertex.agent.llm_response"]
+
+        for span in spans:
+            if span.parent is None:
+                root_span = span
+            else:
+                attrs = span.attributes or {}
+                # Find first available input attribute
+                if first_inputs is None:
+                    for attr_name in input_attrs:
+                        if attr_name in attrs:
+                            first_inputs = attrs[attr_name]
+                            break
+                # Find first available output attribute
+                if first_outputs is None:
+                    for attr_name in output_attrs:
+                        if attr_name in attrs:
+                            first_outputs = attrs[attr_name]
+                            break
+
+        # Enrich root span if we found inputs/outputs
+        if root_span is not None and (first_inputs or first_outputs):
+            # ReadableSpan attributes are immutable, so we create enriched copy
+            enriched_spans = []
+            for span in spans:
+                if span.parent is None:
+                    # Create enriched root span
+                    enriched_span = self._enrich_span(
+                        span, first_inputs, first_outputs
+                    )
+                    enriched_spans.append(enriched_span)
+                else:
+                    enriched_spans.append(span)
+            self._wrapped.export(enriched_spans)
+        else:
+            # No enrichment needed
+            self._wrapped.export(spans)
+
+    def _enrich_span(self, span, inputs: str | None, outputs: str | None):
+        """Create a copy of span with added mlflow attributes."""
+        # Build new attributes dict
+        new_attrs = dict(span.attributes) if span.attributes else {}
+        if inputs and "mlflow.spanInputs" not in new_attrs:
+            new_attrs["mlflow.spanInputs"] = inputs
+        if outputs and "mlflow.spanOutputs" not in new_attrs:
+            new_attrs["mlflow.spanOutputs"] = outputs
+
+        # Create new ReadableSpan with enriched attributes
+        # We use the internal _ReadableSpan constructor approach
+        enriched = _EnrichedReadableSpan(span, new_attrs)
+        return enriched
+
+    def _cleanup_stale_traces(self) -> None:
+        """Remove traces that have been buffered too long."""
+        now = self._time.time()
+        stale_traces = []
+
+        with self._lock:
+            for trace_id, data in self._buffer.items():
+                if now - data["timestamp"] > self._timeout:
+                    stale_traces.append(trace_id)
+
+            for trace_id in stale_traces:
+                trace_data = self._buffer.pop(trace_id)
+                # Export without enrichment (root span never arrived)
+                self._wrapped.export(trace_data["spans"])
+
+    def shutdown(self) -> None:
+        """Flush remaining spans and shutdown."""
+        with self._lock:
+            for trace_data in self._buffer.values():
+                self._wrapped.export(trace_data["spans"])
+            self._buffer.clear()
+        self._wrapped.shutdown()
+
+    def force_flush(self, timeout_millis: int = 30000) -> bool:
+        """Force flush all buffered spans."""
+        with self._lock:
+            for trace_data in self._buffer.values():
+                self._wrapped.export(trace_data["spans"])
+            self._buffer.clear()
+        result = self._wrapped.force_flush(timeout_millis)
+        return bool(result)
+
+
+class _EnrichedReadableSpan:
+    """Wrapper that presents a ReadableSpan with modified attributes.
+
+    OpenTelemetry's ReadableSpan is immutable, so we wrap it to override
+    the attributes property while delegating everything else.
+    """
+
+    def __init__(self, original_span, new_attributes: dict):
+        self._original = original_span
+        self._attributes = new_attributes
+
+    @property
+    def attributes(self):
+        return self._attributes
+
+    @property
+    def name(self):
+        return self._original.name
+
+    @property
+    def context(self):
+        return self._original.context
+
+    @property
+    def parent(self):
+        return self._original.parent
+
+    @property
+    def start_time(self):
+        return self._original.start_time
+
+    @property
+    def end_time(self):
+        return self._original.end_time
+
+    @property
+    def status(self):
+        return self._original.status
+
+    @property
+    def kind(self):
+        return self._original.kind
+
+    @property
+    def events(self):
+        return self._original.events
+
+    @property
+    def links(self):
+        return self._original.links
+
+    @property
+    def resource(self):
+        return self._original.resource
+
+    @property
+    def instrumentation_scope(self):
+        return self._original.instrumentation_scope
+
+    @property
+    def dropped_attributes(self):
+        return self._original.dropped_attributes
+
+    @property
+    def dropped_events(self):
+        return self._original.dropped_events
+
+    @property
+    def dropped_links(self):
+        return self._original.dropped_links
+
+    def get_span_context(self):
+        return self._original.get_span_context()
+
+    def to_json(self, indent=4):
+        return self._original.to_json(indent)
+
+
 def _setup_mlflow(endpoint: str, service_name: str, console: bool = False):
     """Setup MLflow with OTLP for Google ADK tracing.
 
@@ -228,13 +468,15 @@ def _setup_mlflow(endpoint: str, service_name: str, console: bool = False):
         provider.add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
         print("llmops: Console exporter enabled")
 
-    # OTLP exporter to MLflow
-    exporter = OTLPSpanExporter(
+    # OTLP exporter to MLflow, wrapped to enrich root spans
+    otlp_exporter = OTLPSpanExporter(
         endpoint=otlp_endpoint,
         headers={"x-mlflow-experiment-id": experiment_id},
     )
-    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    enriching_exporter = RootSpanEnrichingExporter(otlp_exporter)
+    provider.add_span_processor(SimpleSpanProcessor(enriching_exporter))
     print(f"llmops: OTLP endpoint for ADK tracing: {otlp_endpoint}")
+    print("llmops: Root span enrichment enabled for MLflow UI")
 
     trace.set_tracer_provider(provider)
 

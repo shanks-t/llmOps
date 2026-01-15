@@ -13,7 +13,7 @@ service:
 
 # Backend selection: "phoenix" or "mlflow"
 # Can be overridden via LLMOPS_BACKEND environment variable
-backend: phoenix
+backend: mlflow
 
 # Phoenix backend configuration (OpenInference semantic conventions)
 phoenix:
