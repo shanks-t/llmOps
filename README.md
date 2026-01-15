@@ -35,11 +35,11 @@ pip install uv
 ## Installation
 
 ```bash
-cd llm-observability-sdk
-
-# Install all dependencies (SDK + test + backends)
-uv sync --all-extras
+# From repository root
+just install
 ```
+
+All `just` commands work from the repository root - no need to `cd` into subdirectories.
 
 ## Quick Start
 
@@ -128,7 +128,30 @@ just stream prompt="Explain photosynthesis"
 
 ## Available Commands
 
-Run `just --list` to see all commands. Key recipes:
+Run `just --list` from the repository root to see all commands organized by group.
+
+### Justfile Structure
+
+This repository uses a **delegation pattern** with two Justfiles:
+
+| File | Purpose |
+|------|---------|
+| `./Justfile` | Root entry point - delegates to SDK |
+| `./llm-observability-sdk/Justfile` | SDK-specific recipes |
+
+You can run commands from either location:
+
+```bash
+# From repo root (recommended)
+just test
+just lint
+
+# Direct SDK access (equivalent)
+just sdk test
+cd llm-observability-sdk && just test
+```
+
+### Key Recipes
 
 ### Quality Checks
 
@@ -225,17 +248,22 @@ This allows agents to quickly identify and fix issues without additional explora
 ## Project Structure
 
 ```
-llm-observability-sdk/
-├── src/llmops/          # SDK implementation
-├── tests/               # Test suite
-│   ├── test_configure.py    # Unit tests
-│   └── integration/         # Integration + E2E tests
-├── examples/            # Usage examples
-│   └── server.py            # FastAPI demo server
-├── docker/              # Docker compose files
-├── llmops.yaml          # Example configuration
-├── Justfile             # Task runner recipes
-└── pyproject.toml       # Project metadata
+llmOps/
+├── Justfile                 # Root task runner (delegates to SDK)
+├── README.md                # This file
+├── docs/                    # Architecture & specification docs
+├── docker/                  # Root docker-compose
+└── llm-observability-sdk/   # SDK implementation
+    ├── src/llmops/          # SDK source code
+    ├── tests/               # Test suite
+    │   ├── test_configure.py    # Unit tests
+    │   └── integration/         # Integration + E2E tests
+    ├── examples/            # Usage examples
+    │   └── server.py            # FastAPI demo server
+    ├── docker/              # SDK docker compose files
+    ├── llmops.yaml          # Example configuration
+    ├── Justfile             # SDK task runner recipes
+    └── pyproject.toml       # Project metadata
 ```
 
 ## Documentation
