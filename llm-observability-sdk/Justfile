@@ -164,4 +164,4 @@ research topic="quantum computing applications":
 # Test /stream endpoint - streaming response via SSE
 [group('examples')]
 stream prompt="Explain how photosynthesis works":
-    curl -N "http://localhost:8000/stream?prompt={{prompt}}"
+    curl -N --get --data-urlencode "prompt={{prompt}}" http://localhost:8000/stream
