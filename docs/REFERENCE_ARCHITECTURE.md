@@ -1,7 +1,7 @@
 # LLM Observability SDK — Reference Architecture
 
-**Version:** 1.0
-**Date:** 2026-01-13
+**Version:** 2.0
+**Date:** 2026-01-15
 **Status:** Draft
 
 ---
@@ -19,9 +19,51 @@ This is the "how systems like this should be built" document.
 
 ---
 
-## 2. SDK Layering
+## 2. How to Read This Document
 
-### 2.1 Layer Definitions
+This reference architecture distinguishes between **normative** and **illustrative** content:
+
+| Type | Meaning | Reader Action |
+|------|---------|---------------|
+| **Normative** | Architectural constraints that MUST be followed | Implement exactly as specified |
+| **Illustrative** | Example strategies demonstrating one valid approach | Use as guidance; other implementations are valid |
+
+### Section Classifications
+
+| Section | Classification | Rationale |
+|---------|---------------|-----------|
+| §3 SDK Layering | **Normative** | Defines system structure and dependency rules |
+| §4 Core Invariants | **Normative** | Safety properties that must hold |
+| §5 Async and Concurrency | **Normative (contract)** / Illustrative (code) | Callable types must be supported; implementation may vary |
+| §6 Streaming Patterns | **Normative (behavior)** / Illustrative (code) | Streaming must work; exact mechanism may vary |
+| §7 Error Handling | **Normative** | Error isolation is a safety requirement |
+| §8 Span Nesting | **Normative** | Context propagation rules must hold |
+| §9 Backend Adapter Contract | **Normative (interface)** / Illustrative (examples) | Contract is required; adapter internals may vary |
+| §10 Semantic Mapping Pipeline | **Normative (flow)** / Illustrative (code) | Data flow must follow pattern; translation details may vary |
+| §11 Configuration | **Normative (schema)** / Illustrative (examples) | Schema is required; load mechanics may vary |
+| §12 Validation Modes | **Normative** | Both modes must be supported |
+| §13 Performance | **Illustrative** | Guidelines, not requirements |
+| §14 Testing & CI | **Illustrative** | Recommended patterns, not required |
+
+### Marking Convention
+
+Throughout this document:
+
+> **Normative:** Text in this format represents architectural requirements.
+
+```
+# Illustrative Example (Non-Normative)
+# Code in blocks marked this way demonstrates one possible implementation.
+# Other implementations are valid as long as invariants hold.
+```
+
+---
+
+## 3. SDK Layering
+
+> **Normative:** The layer structure and dependency rules in this section are architectural requirements.
+
+### 3.1 Layer Definitions
 
 | Layer | Responsibility | Stability | Dependencies |
 |-------|---------------|-----------|--------------|
@@ -32,7 +74,9 @@ This is the "how systems like this should be built" document.
 | **L1: Adapters** | Backend-specific translation | Maintained | L0 |
 | **L0: OpenTelemetry** | Tracing foundation | External | None |
 
-### 2.2 Dependency Rule
+### 3.2 Dependency Rule
+
+> **Normative:** These dependency constraints must be enforced.
 
 **Strict downward-only dependencies:**
 
@@ -46,7 +90,9 @@ L5 → L4 → L3 → L2 → L1 → L0
 - Lower layers MUST NOT depend on higher layers
 - No circular dependencies
 
-### 2.3 API vs SDK Separation
+### 3.3 API vs SDK Separation
+
+> **Normative:** This separation must be maintained.
 
 Inspired by [OpenTelemetry's design](https://opentelemetry.io/docs/specs/otel/library-guidelines/):
 
@@ -57,20 +103,22 @@ Inspired by [OpenTelemetry's design](https://opentelemetry.io/docs/specs/otel/li
 
 **Key property:** Application code depends only on API package. SDK package can be swapped or omitted (no-op mode).
 
-### 2.4 Auto-instrumentation Layer (L4)
+### 3.4 Auto-instrumentation Layer (L4)
 
 The auto-instrumentation layer orchestrates backend-provided instrumentors based on configuration.
 
-#### 2.4.1 Supported Backends and Instrumentors
+#### 3.4.1 Supported Backends and Instrumentors
+
+> **Normative:** These backends must be supported with their respective instrumentor sources.
 
 | Backend | Instrumentor Source | Libraries Supported |
 |---------|--------------------|--------------------|
 | **Arize Phoenix** | OpenInference | OpenAI, Anthropic, LangChain, LlamaIndex, Google GenAI, Bedrock, Mistral, Groq, VertexAI |
 | **MLflow** | MLflow native | OpenAI, Anthropic, LangChain, LlamaIndex, AutoGen, DSPy, Google GenAI |
 
-#### 2.4.2 init() Function
+#### 3.4.2 init() Function Interface
 
-The `init()` function is the single entry point for auto-instrumentation:
+> **Normative:** This interface must be provided.
 
 ```python
 def init(
@@ -94,70 +142,9 @@ def init(
     """
 ```
 
-#### 2.4.3 Initialization Flow
+#### 3.4.3 Auto-instrumentation Invariants
 
-```python
-# Internal implementation (simplified)
-
-def init(config_path=None, *, backend=None, auto_instrument=True, **kwargs):
-    # 1. Load and validate configuration
-    config = _load_config(config_path)
-    config = _apply_overrides(config, backend=backend, **kwargs)
-    _validate_config(config)  # Raises ConfigurationError if invalid
-
-    # 2. Initialize OpenTelemetry TracerProvider
-    _init_tracer_provider(config)
-
-    # 3. Initialize backend adapter and exporter
-    adapter = _create_adapter(config.backend)
-    _register_exporter(adapter)
-
-    # 4. Enable auto-instrumentation if requested
-    if auto_instrument:
-        _init_auto_instrumentation(config)
-
-    # 5. Store global state
-    _set_global_config(config)
-
-
-def _init_auto_instrumentation(config: Config) -> None:
-    """Initialize backend-specific auto-instrumentors."""
-
-    if config.backend == "phoenix":
-        _init_phoenix_instrumentors(config)
-    elif config.backend == "mlflow":
-        _init_mlflow_instrumentors(config)
-
-
-def _init_phoenix_instrumentors(config: Config) -> None:
-    """Initialize OpenInference instrumentors for Phoenix."""
-    from openinference.instrumentation import auto_instrument_all
-
-    # Get disabled instrumentors from config
-    disabled = set(config.auto_instrumentation.disabled or [])
-
-    # auto_instrument_all enables all available instrumentors
-    # We filter based on config
-    auto_instrument_all(
-        tracer_provider=_get_tracer_provider(),
-        skip=disabled,
-    )
-
-
-def _init_mlflow_instrumentors(config: Config) -> None:
-    """Initialize MLflow auto-instrumentation."""
-    import mlflow
-
-    # MLflow's autolog enables instrumentation for all supported libraries
-    disabled = set(config.auto_instrumentation.disabled or [])
-
-    mlflow.tracing.enable(
-        tracer_provider=_get_tracer_provider(),
-        exclude=disabled,
-    )
-```
-
-#### 2.4.4 Auto-instrumentation Invariants
+> **Normative:** These invariants must hold for all implementations.
 
 ```
 INVARIANT A1: Auto-instrumentation never modifies application behavior
@@ -188,11 +175,11 @@ INVARIANT A3: Manual instrumentation takes precedence
 
 ---
 
-## 3. Core Invariants
+## 4. Core Invariants
 
-These MUST hold for all implementations. Violations are bugs.
+> **Normative:** These invariants MUST hold for all implementations. Violations are bugs.
 
-### 3.1 Telemetry Safety
+### 4.1 Telemetry Safety
 
 ```
 INVARIANT 1: Telemetry never breaks business logic
@@ -205,29 +192,7 @@ INVARIANT 1: Telemetry never breaks business logic
 - Function return values MUST NOT be modified
 - Function signatures MUST be preserved exactly
 
-**Implementation:**
-```python
-def decorator(func):
-    @functools.wraps(func)
-    async def wrapper(*args, **kwargs):
-        try:
-            span = _start_span(...)
-        except Exception:
-            _log_internal_error(...)
-            span = None  # Continue without telemetry
-
-        try:
-            return await func(*args, **kwargs)
-        finally:
-            if span:
-                try:
-                    _end_span(span)
-                except Exception:
-                    _log_internal_error(...)
-    return wrapper
-```
-
-### 3.2 Signature Preservation
+### 4.2 Signature Preservation
 
 ```
 INVARIANT 2: Decorators preserve function signatures
@@ -240,7 +205,7 @@ INVARIANT 2: Decorators preserve function signatures
 - No argument reordering or mutation
 - FastAPI dependency injection must work unchanged
 
-**Verification:**
+**Verification (normative test):**
 ```python
 @llmops.llm(model="gpt-4o")
 async def generate(prompt: str, temperature: float = 0.7) -> str:
@@ -252,7 +217,7 @@ assert generate.__annotations__ == {"prompt": str, "temperature": float, "return
 assert hasattr(generate, "__wrapped__")
 ```
 
-### 3.3 Explicit Enrichment
+### 4.3 Explicit Enrichment
 
 ```
 INVARIANT 3: Data capture requires explicit SDK calls
@@ -269,7 +234,7 @@ INVARIANT 3: Data capture requires explicit SDK calls
 - Testable (calls can be mocked/asserted)
 - Flexible (call at any point during execution)
 
-### 3.4 Privacy by Default
+### 4.4 Privacy by Default
 
 ```
 INVARIANT 4: Content is not captured unless explicitly enabled
@@ -283,9 +248,11 @@ INVARIANT 4: Content is not captured unless explicitly enabled
 
 ---
 
-## 4. Async and Concurrency
+## 5. Async and Concurrency
 
-### 4.1 Supported Callable Types
+### 5.1 Supported Callable Types
+
+> **Normative:** All callable types in this table must be supported.
 
 | Type | Detection | Span Lifecycle |
 |------|-----------|----------------|
@@ -294,11 +261,20 @@ INVARIANT 4: Content is not captured unless explicitly enabled
 | Sync generator | `inspect.isgeneratorfunction(f)` | Start → iterate → end |
 | Async generator | `inspect.isasyncgenfunction(f)` | Start → async iterate → end |
 
-### 4.2 Context Propagation
+### 5.2 Context Propagation
 
-**Mechanism:** Python `contextvars` for async-safe span context.
+> **Normative:** Context must propagate correctly across async boundaries.
+
+**Required properties:**
+- Works across `await` boundaries
+- Isolated between concurrent tasks
+- No thread-local storage (async-safe)
 
 ```python
+# Illustrative Example (Non-Normative)
+# This demonstrates one possible implementation using contextvars.
+# Other mechanisms that provide the same properties are valid.
+
 _current_span: ContextVar[Optional[Span]] = ContextVar("current_span", default=None)
 
 def set_input(value: Any) -> None:
@@ -308,140 +284,68 @@ def set_input(value: Any) -> None:
     # No-op if no span (safe by design)
 ```
 
-**Properties:**
-- Works across `await` boundaries
-- Isolated between concurrent tasks
-- No thread-local storage (async-safe)
+### 5.3 Generator Span Lifecycle
 
-### 4.3 Generator Span Lifecycle
+> **Normative:** Generator spans must follow this lifecycle contract.
 
 **Sync generators:**
-```python
-@llmops.llm(model="gpt-4o")
-def stream():
-    # Span starts here (first iteration or function entry)
-    for chunk in source:
-        llmops.emit_chunk(chunk)
-        yield chunk
-    # Span ends here (exhaustion)
-```
+- Span starts at first iteration or function entry
+- Span ends on exhaustion, exception, or early termination
 
 **Async generators:**
-```python
-@llmops.llm(model="gpt-4o")
-async def stream():
-    # Span starts here
-    async for chunk in source:
-        llmops.emit_chunk(chunk)
-        yield chunk
-    # Span ends here
-```
+- Same lifecycle as sync generators, but async-aware
 
-**Edge cases:**
+**Edge cases (all must be handled):**
 - Early termination (break): Span ends with partial data
 - Exception during iteration: Span ends with error status
-- Generator garbage collected: Span ends (cleanup via `__del__` or context manager)
-
-### 4.4 Decorator Implementation Pattern
-
-```python
-import functools
-import asyncio
-import inspect
-from contextlib import contextmanager, asynccontextmanager
-
-def semantic(kind: SemanticKind, *, name: str = None, **kwargs):
-    def decorator(func):
-        is_async = asyncio.iscoroutinefunction(func)
-        is_gen = inspect.isgeneratorfunction(func)
-        is_async_gen = inspect.isasyncgenfunction(func)
-
-        if is_async_gen:
-            return _wrap_async_generator(func, kind, name, kwargs)
-        elif is_gen:
-            return _wrap_generator(func, kind, name, kwargs)
-        elif is_async:
-            return _wrap_async(func, kind, name, kwargs)
-        else:
-            return _wrap_sync(func, kind, name, kwargs)
-
-    return decorator
-```
+- Generator garbage collected: Span ends cleanly
 
 ---
 
-## 5. Streaming Patterns
+## 6. Streaming Patterns
 
-### 5.1 Chunk Emission
+### 6.1 Chunk Emission
 
-Streaming responses emit chunks as **span events**:
+> **Normative:** Streaming responses must support chunk emission as span events.
 
-```python
-async def stream_generate(prompt: str):
-    llmops.set_input(prompt)
+**Required behavior:**
+- Chunks emitted during iteration appear as span events
+- Each chunk event includes index and optional content
+- Time-to-first-token automatically captured
 
-    async for chunk in llm_stream:
-        llmops.emit_chunk(chunk)  # Creates span event
-        yield chunk
-
-    llmops.set_output(accumulated)  # Final output
-```
-
-**Event structure:**
+**Event structure (normative schema):**
 ```python
 {
     "name": "gen_ai.content.chunk",
     "timestamp": ...,
     "attributes": {
-        "chunk.index": 0,
-        "chunk.content": "The",  # If capture enabled
+        "chunk.index": int,          # Required
+        "chunk.content": str | None, # If capture enabled
     }
 }
 ```
 
-### 5.2 Time-to-First-Token
+### 6.2 Time-to-First-Token
 
-Automatically captured for streaming spans:
+> **Normative:** TTFT must be captured for streaming spans.
 
-```python
-# Internal tracking
-span._first_chunk_time = None
+**Required attribute:** `gen_ai.time_to_first_token_ms`
+- Measured from span start to first chunk emission
+- Set automatically on first `emit_chunk()` call
 
-def emit_chunk(chunk):
-    span = _current_span.get()
-    if span and span._first_chunk_time is None:
-        span._first_chunk_time = time.time()
-        span.set_attribute("gen_ai.time_to_first_token_ms",
-                          (span._first_chunk_time - span._start_time) * 1000)
-```
+### 6.3 Token Accumulation
 
-### 5.3 Token Accumulation
+> **Normative:** Token counts may be set at any point, including after stream completion.
 
-For streaming, tokens are typically known only at end:
-
-```python
-async def stream():
-    llmops.set_input(prompt)
-    chunks = []
-
-    async for chunk in stream:
-        chunks.append(chunk)
-        llmops.emit_chunk(chunk)
-        yield chunk
-
-    # Set final values after stream completes
-    llmops.set_output("".join(c.content for c in chunks))
-    llmops.set_tokens(
-        input=chunks[-1].usage.prompt_tokens,
-        output=chunks[-1].usage.completion_tokens
-    )
-```
+This allows streaming implementations to set final token counts when usage information becomes available (typically in the final chunk).
 
 ---
 
-## 6. Error Handling
+## 7. Error Handling
 
-### 6.1 Error Categories
+> **Normative:** Error handling rules in this section are safety requirements.
+
+### 7.1 Error Categories
 
 | Category | Source | SDK Behavior |
 |----------|--------|--------------|
@@ -449,78 +353,51 @@ async def stream():
 | **Application error** | User code exception | Propagate unchanged, mark span as error |
 | **Configuration error** | Invalid config | Fail at startup (not runtime) |
 
-### 6.2 Application Error Handling
+### 7.2 Application Error Handling
 
-```python
-@llmops.tool(name="query")
-async def query_db(sql: str):
-    llmops.set_input(sql)
-    try:
-        result = await db.execute(sql)
-        llmops.set_output(result)
-        return result
-    except DatabaseError as e:
-        llmops.set_error(e)  # Additional context
-        raise  # MUST re-raise to user code
-```
+> **Normative:** Application errors must propagate unchanged.
 
-**Automatic capture:**
-- Exception type: `error.type`
-- Exception message: `error.message`
+**Required behavior:**
+- Exceptions from user code are re-raised exactly
+- Span is marked with error status
+- Exception type and message captured as span attributes
+
+**Automatic capture (normative attributes):**
+- `error.type`: Exception class name
+- `error.message`: Exception message
 - Span status: `ERROR`
 
-### 6.3 Telemetry Error Isolation
+### 7.3 Telemetry Error Isolation
 
-```python
-# Internal pattern for all SDK operations
-def _safe_operation(operation: Callable, *args, **kwargs):
-    try:
-        return operation(*args, **kwargs)
-    except Exception as e:
-        _log_internal_error(e, operation.__name__)
-        return None  # Safe default
-```
+> **Normative:** Telemetry errors must never propagate to user code.
+
+All SDK operations must catch and handle exceptions internally. Failed operations result in degraded telemetry (e.g., missing attributes), never application failures.
 
 ---
 
-## 7. Span Nesting
+## 8. Span Nesting
 
-### 7.1 Automatic Parent-Child
+> **Normative:** Automatic parent-child relationships must work via context propagation.
 
-Spans automatically nest via context propagation:
+### 8.1 Automatic Parent-Child
 
-```python
-@llmops.agent(name="research")
-async def research(query):
-    # Creates parent span
+Spans automatically nest via context propagation. When a decorated function calls another decorated function, the inner span becomes a child of the outer span.
 
-    result = await search(query)  # Child span
-    analysis = await analyze(result)  # Child span
-    return analysis
+### 8.2 Context Inheritance
 
-@llmops.retrieve(name="search")
-async def search(query):
-    # Automatically child of "research" span
-    ...
+> **Normative:** Child spans must inherit from parent:
 
-@llmops.llm(model="gpt-4o")
-async def analyze(data):
-    # Automatically child of "research" span
-    ...
-```
-
-### 7.2 Context Inheritance
-
-Child spans inherit from parent:
 - Trace ID
-- Custom attributes set via `llmops.attributes()` context manager
+- Custom attributes set via context manager
 - Session ID if set
 
 ---
 
-## 8. Backend Adapter Contract
+## 9. Backend Adapter Contract
 
-### 8.1 Adapter Interface
+### 9.1 Adapter Interface
+
+> **Normative:** All adapters must implement this interface.
 
 ```python
 class BackendAdapter(Protocol):
@@ -537,14 +414,18 @@ class BackendAdapter(Protocol):
         ...
 ```
 
-### 8.2 Adapter Invariants
+### 9.2 Adapter Invariants
+
+> **Normative:** These properties must hold for all adapter implementations.
 
 1. **Never raise to SDK core** — All exceptions caught internally
-2. **Handle missing attributes** — Graceful degradation
+2. **Handle missing attributes** — Graceful degradation for incomplete spans
 3. **Preserve custom attributes** — Pass through unchanged
 4. **Support batching** — Buffer and batch export for efficiency
 
-### 8.3 Translation Responsibility
+### 9.3 Translation Responsibility
+
+> **Normative:** Translation responsibility by backend type.
 
 | Backend | Translation |
 |---------|-------------|
@@ -553,17 +434,57 @@ class BackendAdapter(Protocol):
 | Arize Phoenix | Translate gen_ai.* → OpenInference |
 | Datadog | None — native gen_ai.* support (v1.37+) |
 
+### 9.4 Adapter Translation Contract
+
+> **Normative:** Adapters requiring translation must implement these mappings.
+
+**Phoenix (OpenInference) required mappings:**
+
+| OTel GenAI Attribute | OpenInference Attribute |
+|---------------------|------------------------|
+| `gen_ai.operation.name` | `openinference.span.kind` |
+| `gen_ai.request.model` | `llm.model_name` |
+| `gen_ai.usage.input_tokens` | `llm.token_count.prompt` |
+| `gen_ai.usage.output_tokens` | `llm.token_count.completion` |
+
+**Operation to span kind mapping:**
+
+| `gen_ai.operation.name` | `openinference.span.kind` |
+|------------------------|--------------------------|
+| `chat` | `LLM` |
+| `text_completion` | `LLM` |
+| `embeddings` | `EMBEDDING` |
+| `execute_tool` | `TOOL` |
+| `agent` | `AGENT` |
+| `retrieve` | `RETRIEVER` |
+| (other) | `CHAIN` |
+
+```python
+# Illustrative Example (Non-Normative)
+# This pseudocode demonstrates the translation pattern.
+# Actual implementation may differ.
+
+def translate_to_openinference(span):
+    for attr in gen_ai_attributes:
+        map_to_openinference(attr)
+    for event in content_events:
+        flatten_to_indexed_attributes(event)
+    preserve_custom_attributes()
+```
+
 ---
 
-## 9. Semantic Mapping Pipeline
+## 10. Semantic Mapping Pipeline
 
-This section details how semantic information flows from the public API through to backend systems. For complete attribute mapping tables, see [SEMANTICS.md](./SEMANTICS.md).
+> **Normative:** The pipeline stages and data flow in this section are architectural requirements. Implementation details are illustrative.
 
-### 9.1 Pipeline Overview
+For complete attribute mapping tables, see [SEMANTICS.md](./SEMANTICS.md).
+
+### 10.1 Pipeline Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  LAYER 4: Public API                                                        │
+│  LAYER 5: Public API                                                        │
 │  ────────────────────────────────────────────────────────────────────────── │
 │  @llmops.llm(model="gpt-4o")      →  SemanticKind.LLM_GENERATE             │
 │  @llmops.tool(name="search")      →  SemanticKind.TOOL_CALL                │
@@ -581,9 +502,9 @@ This section details how semantic information flows from the public API through 
 │  ────────────────────────────────────────────────────────────────────────── │
 │                                                                             │
 │  SemanticSpan {                                                             │
-│      kind: SemanticKind.LLM_GENERATE,                                       │
-│      name: "generate",                                                      │
-│      model: "gpt-4o",                                                       │
+│      kind: SemanticKind,                                                    │
+│      name: str,                                                             │
+│      model: str | None,                                                     │
 │      input: InputEvent | None,                                              │
 │      output: OutputEvent | None,                                            │
 │      tokens: TokenUsage | None,                                             │
@@ -602,18 +523,15 @@ This section details how semantic information flows from the public API through 
 │  ────────────────────────────────────────────────────────────────────────── │
 │                                                                             │
 │  OTelSpan {                                                                 │
-│      name: "chat gpt-4o",                                                   │
-│      kind: SpanKind.CLIENT,                                                 │
+│      name: "{operation} {model|name}",                                      │
+│      kind: SpanKind.CLIENT | SpanKind.INTERNAL,                            │
 │      attributes: {                                                          │
-│          "gen_ai.operation.name": "chat",                                   │
-│          "gen_ai.request.model": "gpt-4o",                                  │
-│          "gen_ai.usage.input_tokens": 150,                                  │
-│          "gen_ai.usage.output_tokens": 42,                                  │
+│          "gen_ai.operation.name": str,                                      │
+│          "gen_ai.request.model": str | None,                               │
+│          "gen_ai.usage.input_tokens": int | None,                          │
+│          "gen_ai.usage.output_tokens": int | None,                         │
 │      },                                                                     │
-│      events: [                                                              │
-│          Event("gen_ai.content.input", {...}),   # If capture enabled      │
-│          Event("gen_ai.content.output", {...}),  # If capture enabled      │
-│      ],                                                                     │
+│      events: [Event("gen_ai.content.*", {...})],  # If capture enabled     │
 │  }                                                                          │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -624,18 +542,15 @@ This section details how semantic information flows from the public API through 
 ┌─────────────────────┐ ┌─────────────────────┐ ┌─────────────────────┐
 │  OTLP Adapter       │ │  MLflow Adapter     │ │  Phoenix Adapter    │
 │  (Pass-through)     │ │  (Pass-through)     │ │  (Translation)      │
-│                     │ │                     │ │                     │
-│  No changes         │ │  No changes         │ │  gen_ai.* →         │
-│  gen_ai.* intact    │ │  gen_ai.* intact    │ │  OpenInference      │
 └─────────────────────┘ └─────────────────────┘ └─────────────────────┘
           │                       │                       │
           ▼                       ▼                       ▼
     Tempo/Jaeger              MLflow                 Phoenix
 ```
 
-### 9.2 SemanticKind to OTel GenAI Mapping
+### 10.2 SemanticKind to OTel GenAI Mapping
 
-The SDK maps semantic kinds to OTel GenAI conventions:
+> **Normative:** These mappings must be implemented.
 
 | SemanticKind | `gen_ai.operation.name` | OTel SpanKind | Span Name Format |
 |--------------|-------------------------|---------------|------------------|
@@ -646,281 +561,43 @@ The SDK maps semantic kinds to OTel GenAI conventions:
 | `EMBED` | `embeddings` | `CLIENT` | `embeddings {model}` |
 | `TASK` | `task` | `INTERNAL` | `task {name}` |
 
-### 9.3 Span Creation Flow
+### 10.3 Content Capture and Privacy
 
-```python
-# Internal implementation (simplified)
+> **Normative:** Privacy configuration must follow this precedence.
 
-def _create_span(kind: SemanticKind, **kwargs) -> SemanticSpan:
-    """Create a semantic span from decorator parameters."""
+**Capture resolution order (highest to lowest priority):**
+1. Per-call override (`capture=True/False` parameter)
+2. Per-span override (decorator parameter)
+3. Global configuration (`privacy.capture_content`)
 
-    # 1. Create internal representation
-    semantic_span = SemanticSpan(
-        kind=kind,
-        name=kwargs.get("name") or _get_function_name(),
-        model=kwargs.get("model"),
-        capture_override=kwargs.get("capture"),
-    )
-
-    # 2. Get parent from context (automatic nesting)
-    parent = _current_span.get()
-    if parent:
-        semantic_span.parent = parent
-        parent.children.append(semantic_span)
-
-    # 3. Map to OTel GenAI
-    otel_span = _map_to_otel(semantic_span)
-
-    # 4. Set as current span in context
-    _current_span.set(semantic_span)
-
-    return semantic_span
-
-
-def _map_to_otel(semantic_span: SemanticSpan) -> OTelSpan:
-    """Map semantic span to OTel GenAI span."""
-
-    # Determine OTel attributes based on semantic kind
-    operation_name = _OPERATION_NAMES[semantic_span.kind]
-    span_kind = _SPAN_KINDS[semantic_span.kind]
-
-    # Build span name per OTel GenAI conventions
-    if semantic_span.kind == SemanticKind.LLM_GENERATE:
-        span_name = f"{operation_name} {semantic_span.model}"
-    else:
-        span_name = f"{operation_name} {semantic_span.name}"
-
-    # Create OTel span
-    otel_span = tracer.start_span(
-        name=span_name,
-        kind=span_kind,
-        attributes={
-            "gen_ai.operation.name": operation_name,
-            "gen_ai.request.model": semantic_span.model,  # If applicable
-        }
-    )
-
-    return otel_span
-```
-
-### 9.4 Enrichment to Attribute Mapping
-
-When enrichment functions are called, they update both the semantic span and the OTel span:
-
-```python
-def set_tokens(*, input: int = None, output: int = None) -> None:
-    """Map token counts to OTel GenAI attributes."""
-    span = _current_span.get()
-    if span is None:
-        return  # No-op safety
-
-    try:
-        # Update semantic model
-        span.tokens = TokenUsage(input=input, output=output)
-
-        # Map to OTel GenAI attributes
-        otel_span = span._otel_span
-        if input is not None:
-            otel_span.set_attribute("gen_ai.usage.input_tokens", input)
-        if output is not None:
-            otel_span.set_attribute("gen_ai.usage.output_tokens", output)
-
-    except Exception as e:
-        _log_internal_error("set_tokens", e)
-```
-
-### 9.5 Content Capture and Privacy
-
-Content is captured as OTel events, respecting privacy configuration:
-
-```python
-def set_input(value: Any, *, capture: bool = None) -> None:
-    """Capture input, respecting privacy settings."""
-    span = _current_span.get()
-    if span is None:
-        return
-
-    try:
-        # Determine if content should be captured
-        should_capture = _resolve_capture(
-            global_config=_config.privacy.capture_content,
-            span_override=span.capture_override,
-            call_override=capture,
-        )
-
-        # Always record metadata
-        span.input = InputEvent(
-            value_type=type(value).__name__,
-            value_length=_safe_length(value),
-            timestamp=time.time(),
-        )
-
-        # Conditionally record content as OTel event
-        if should_capture:
-            serialized = _serialize_for_event(value)
-            span._otel_span.add_event(
-                name="gen_ai.content.input",
-                attributes={"content": serialized}
-            )
-
-    except Exception as e:
-        _log_internal_error("set_input", e)
-```
-
-### 9.6 Backend Adapter Translation
-
-#### OTLP Adapter (Pass-Through)
-
-```python
-class OTLPAdapter:
-    """Pass-through adapter for OTLP-compatible backends."""
-
-    def export(self, span: OTelSpan) -> None:
-        # No translation needed - OTel GenAI attributes passed directly
-        self._exporter.export([span])
-```
-
-#### MLflow Adapter (Pass-Through)
-
-```python
-class MLflowAdapter:
-    """Adapter for MLflow tracing endpoint."""
-
-    def export(self, span: OTelSpan) -> None:
-        # MLflow natively supports OTel GenAI conventions
-        # via /v1/traces endpoint
-        self._exporter.export([span])
-```
-
-#### Phoenix Adapter (Translation Required)
-
-```python
-class PhoenixAdapter:
-    """Adapter for Arize Phoenix (OpenInference conventions)."""
-
-    def export(self, span: OTelSpan) -> None:
-        # Translate OTel GenAI → OpenInference
-        translated = self._translate_to_openinference(span)
-        self._exporter.export([translated])
-
-    def _translate_to_openinference(self, span: OTelSpan) -> OTelSpan:
-        """Translate gen_ai.* attributes to OpenInference."""
-        new_attrs = {}
-
-        # Map operation to span kind
-        op_name = span.attributes.get("gen_ai.operation.name")
-        new_attrs["openinference.span.kind"] = self._map_operation(op_name)
-
-        # Map model
-        if model := span.attributes.get("gen_ai.request.model"):
-            new_attrs["llm.model_name"] = model
-
-        # Map tokens
-        if tokens := span.attributes.get("gen_ai.usage.input_tokens"):
-            new_attrs["llm.token_count.prompt"] = tokens
-        if tokens := span.attributes.get("gen_ai.usage.output_tokens"):
-            new_attrs["llm.token_count.completion"] = tokens
-
-        # Translate events to flattened attributes
-        for event in span.events:
-            if event.name == "gen_ai.content.input":
-                self._flatten_messages(event, new_attrs, "llm.input_messages")
-            elif event.name == "gen_ai.content.output":
-                self._flatten_messages(event, new_attrs, "llm.output_messages")
-
-        # Preserve custom attributes
-        for key, value in span.attributes.items():
-            if key.startswith("custom."):
-                new_attrs[key] = value
-
-        return span.with_attributes(new_attrs)
-
-    def _map_operation(self, op_name: str) -> str:
-        """Map OTel GenAI operation to OpenInference span kind."""
-        return {
-            "chat": "LLM",
-            "text_completion": "LLM",
-            "embeddings": "EMBEDDING",
-            "execute_tool": "TOOL",
-            "agent": "AGENT",
-            "retrieve": "RETRIEVER",
-        }.get(op_name, "CHAIN")
-
-    def _flatten_messages(self, event, attrs: dict, prefix: str) -> None:
-        """Flatten message array to OpenInference indexed format."""
-        messages = event.attributes.get("content", [])
-        for i, msg in enumerate(messages):
-            attrs[f"{prefix}.{i}.message.role"] = msg.get("role")
-            attrs[f"{prefix}.{i}.message.content"] = msg.get("content")
-```
-
-### 9.7 Multi-Backend Export
-
-When multiple backends are configured, spans are exported to all:
-
-```python
-class SpanProcessor:
-    """Process and export spans to configured backends."""
-
-    def __init__(self, adapters: list[BackendAdapter]):
-        self._adapters = adapters
-        self._batch = []
-        self._lock = threading.Lock()
-
-    def on_span_end(self, span: OTelSpan) -> None:
-        """Called when span ends. Buffer for batch export."""
-        with self._lock:
-            self._batch.append(span)
-
-            if len(self._batch) >= self._batch_size:
-                self._flush()
-
-    def _flush(self) -> None:
-        """Export buffered spans to all backends."""
-        spans = self._batch
-        self._batch = []
-
-        for adapter in self._adapters:
-            try:
-                for span in spans:
-                    adapter.export(span)
-            except Exception as e:
-                # Never fail - log and continue
-                _log_internal_error(f"export to {adapter}", e)
-```
+**Content storage:** Content must be stored as OTel events, not span attributes, to support backends that distinguish between metadata and content.
 
 ---
 
-## 10. Configuration
+## 11. Configuration
 
-### 10.1 Load Order
+### 11.1 Load Order
+
+> **Normative:** Configuration must be loaded in this order.
 
 ```
 1. Default values (in code)
 2. YAML config file (~/.llmops/config.yaml or ./llmops.yaml)
 3. Environment variables (LLMOPS_*)
-4. Programmatic override (configure(**kwargs))
+4. Programmatic override (init(**kwargs))
 ```
 
 Later sources override earlier sources.
 
-### 10.2 Validation
+### 11.2 Validation
 
-Configuration validated at startup, not runtime:
+> **Normative:** Configuration must be validated at startup, not runtime.
 
-```python
-def configure(config_path: str = None, **kwargs):
-    config = _load_config(config_path)
-    config = _apply_env_overrides(config)
-    config = _apply_kwargs(config, kwargs)
+Invalid configuration must raise `ConfigurationError` at `init()` time. Runtime operations must never fail due to configuration issues.
 
-    _validate_config(config)  # Raises on invalid config
+### 11.3 Required vs Optional
 
-    _initialize_adapters(config)
-    _set_global_config(config)
-```
-
-### 10.3 Required vs Optional
+> **Normative:** This schema must be supported.
 
 | Field | Required | Default |
 |-------|----------|---------|
@@ -930,49 +607,9 @@ def configure(config_path: str = None, **kwargs):
 | `auto_instrumentation.enabled` | No | `true` |
 | `auto_instrumentation.disabled` | No | `[]` |
 
-### 10.4 Auto-instrumentation Configuration
+### 11.4 Environment Variable Overrides
 
-```yaml
-# llmops.yaml - Phoenix backend example
-service:
-  name: my-llm-app
-  version: 1.0.0
-
-backend: phoenix
-
-phoenix:
-  endpoint: http://localhost:6006
-  project_name: my-project
-
-auto_instrumentation:
-  enabled: true
-  disabled: []  # List of instrumentors to skip, e.g., ["langchain", "llamaindex"]
-
-privacy:
-  capture_content: false
-```
-
-```yaml
-# llmops.yaml - MLflow backend example
-service:
-  name: my-llm-app
-  version: 1.0.0
-
-backend: mlflow
-
-mlflow:
-  tracking_uri: http://localhost:5000
-  experiment_name: my-experiment
-
-auto_instrumentation:
-  enabled: true
-  disabled: []
-
-privacy:
-  capture_content: false
-```
-
-#### Environment Variable Overrides
+> **Normative:** These environment variables must be supported.
 
 | Environment Variable | Config Path | Example |
 |---------------------|-------------|---------|
@@ -984,15 +621,17 @@ privacy:
 
 ---
 
-## 11. Validation Modes
+## 12. Validation Modes
 
-### 11.1 Permissive Mode (Production)
+> **Normative:** Both validation modes must be supported.
+
+### 12.1 Permissive Mode (Production)
 
 - Unknown SemanticKind → warning + custom span
 - Missing enrichment → silent (metadata-only span)
 - Invalid attribute value → log warning, skip attribute
 
-### 11.2 Strict Mode (Development/CI)
+### 12.2 Strict Mode (Development/CI)
 
 - Unknown SemanticKind → error at decoration time
 - LLM span without `set_model()` → warning
@@ -1001,20 +640,22 @@ privacy:
 
 ---
 
-## 12. Performance Considerations
+## 13. Performance Guidelines
 
-### 12.1 Overhead Budget
+> **Illustrative:** This section provides implementation guidance. Specific values and strategies may be adjusted based on deployment requirements.
+
+### 13.1 Overhead Budget
 
 Target: <1ms overhead per span for hot path operations.
 
-### 12.2 Batching
+### 13.2 Batching
 
-Spans batched before export:
-- Default batch size: 512 spans
-- Default flush interval: 5 seconds
+Recommended batching parameters:
+- Batch size: 512 spans
+- Flush interval: 5 seconds
 - Flush on shutdown
 
-### 12.3 Sampling
+### 13.3 Sampling
 
 Future consideration:
 - Head-based sampling at trace start
@@ -1022,11 +663,16 @@ Future consideration:
 
 ---
 
-## 13. Testing Patterns
+## 14. Testing Patterns
 
-### 13.1 Mocking Enrichment
+> **Illustrative:** This section provides recommended testing approaches. Teams may adapt these patterns to their testing frameworks and requirements.
+
+### 14.1 Mocking Enrichment
+
+Enrichment functions should be mockable for unit testing:
 
 ```python
+# Illustrative Example (Non-Normative)
 from unittest.mock import patch
 
 def test_llm_call():
@@ -1038,26 +684,20 @@ def test_llm_call():
             mock_output.assert_called_once()
 ```
 
-### 13.2 Test Mode
+### 14.2 Test Mode
 
-```python
-llmops.configure(test_mode=True)
-# Spans collected in memory, not exported
-# Access via llmops.get_test_spans()
-```
+A test mode should be available that:
+- Collects spans in memory instead of exporting
+- Provides access to collected spans for assertions
+- Does not require backend connectivity
 
-### 13.3 Validation in CI
+### 14.3 CI Integration
 
-```yaml
-# CI config
-validation:
-  mode: "strict"
-  fail_on_warnings: true
-```
+Strict validation mode can be enabled in CI to catch missing instrumentation during development.
 
 ---
 
-## 14. Related Documents
+## 15. Related Documents
 
 | Document | Purpose |
 |----------|---------|
@@ -1069,4 +709,4 @@ validation:
 ---
 
 **Document Owner:** Platform Team
-**Last Updated:** 2026-01-13
+**Last Updated:** 2026-01-15
