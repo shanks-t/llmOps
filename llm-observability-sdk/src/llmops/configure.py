@@ -179,15 +179,19 @@ def _enable_openinference_instrumentors(provider) -> None:
 
 
 # =============================================================================
-# MLflow Backend (Unified OTLP + Native Autolog)
+# MLflow Backend (OTLP-based tracing for Google ADK)
 # =============================================================================
 
 def _setup_mlflow(endpoint: str, service_name: str, console: bool = False):
-    """Setup MLflow with unified OTLP for ADK tracing and native autolog.
+    """Setup MLflow with OTLP for Google ADK tracing.
 
-    This implements Option A: unified OTLP approach where:
-    - OTLP exporter sends ADK traces to MLflow's /v1/traces endpoint
-    - mlflow.autolog() enables tracing for all supported LLM frameworks
+    Per MLflow docs (https://mlflow.org/docs/latest/genai/tracing/integrations/listing/google-adk/):
+    - Initialize OpenTelemetry TracerProvider with OTLP exporter
+    - OTLP exporter sends traces to MLflow's /v1/traces endpoint
+    - Requires x-mlflow-experiment-id header for trace association
+    - Google ADK generates traces natively once TracerProvider is set
+
+    Note: No instrumentors needed - ADK has native OpenTelemetry tracing.
     """
     try:
         import mlflow
@@ -197,10 +201,9 @@ def _setup_mlflow(endpoint: str, service_name: str, console: bool = False):
             "Install with: pip install llmops[mlflow]"
         )
 
-    # Import OTel components for ADK tracing
     from opentelemetry import trace
     from opentelemetry.sdk.trace import TracerProvider
-    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
     from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
     from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 
@@ -213,42 +216,29 @@ def _setup_mlflow(endpoint: str, service_name: str, console: bool = False):
     experiment_id = experiment.experiment_id
     print(f"llmops: MLflow experiment: {service_name} (id: {experiment_id})")
 
-    # Enable MLflow tracing
-    mlflow.tracing.enable()
-    print("llmops: MLflow tracing enabled")
-
     # Setup OTLP exporter for ADK tracing to MLflow
     # MLflow 3.6.0+ supports OTLP ingestion at /v1/traces
-    # Requires x-mlflow-experiment-id header for trace association
     otlp_endpoint = f"{endpoint.rstrip('/')}/v1/traces"
     resource = Resource.create({SERVICE_NAME: service_name})
     provider = TracerProvider(resource=resource)
 
+    # Console exporter first (to see if spans are being created)
+    if console:
+        from opentelemetry.sdk.trace.export import ConsoleSpanExporter
+        provider.add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
+        print("llmops: Console exporter enabled")
+
+    # OTLP exporter to MLflow
     exporter = OTLPSpanExporter(
         endpoint=otlp_endpoint,
         headers={"x-mlflow-experiment-id": experiment_id},
     )
-    provider.add_span_processor(BatchSpanProcessor(exporter))
-    trace.set_tracer_provider(provider)
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
     print(f"llmops: OTLP endpoint for ADK tracing: {otlp_endpoint}")
 
-    # Enable unified autolog for all supported frameworks
-    # This replaces individual autologs (gemini, google_genai, etc.)
-    mlflow.autolog(
-        log_traces=True,           # Enable LLM tracing
-        log_models=False,          # Disable model artifact logging (not needed for tracing)
-        log_datasets=False,        # Disable dataset logging (not needed for tracing)
-        disable_for_unsupported_versions=True,  # Gracefully handle version mismatches
-    )
-    print("llmops: Enabled mlflow.autolog()")
+    trace.set_tracer_provider(provider)
 
-    # Console output for MLflow uses environment variable
-    if console:
-        import os
-        os.environ["MLFLOW_ENABLE_TRACE_LOGGING"] = "true"
-        print("llmops: MLflow trace logging enabled")
-
-    return provider  # Return provider for shutdown handling
+    return provider
 
 
 # =============================================================================
@@ -342,14 +332,6 @@ def shutdown(timeout_ms: int = 5000) -> None:
         _tracer_provider.force_flush(timeout_millis=timeout_ms)
         _tracer_provider.shutdown()
         _tracer_provider = None
-
-    # Disable MLflow tracing if applicable
-    if _backend_type == "mlflow":
-        try:
-            import mlflow
-            mlflow.tracing.disable()
-        except Exception:  # nosec B110 - Best effort shutdown, safe to ignore
-            pass
 
     _configured = False
     _backend_type = None
@@ -446,6 +428,8 @@ def init(
     # Extract values
     effective_backend = config["backend"]
     service_name = config["service"]["name"]
+    # Console can be set in YAML (debug.console) or via kwargs
+    console_enabled = config.get("debug", {}).get("console", False) or backend_kwargs.get("console", False)
 
     # Setup the appropriate backend
     if effective_backend == "phoenix":
@@ -458,7 +442,7 @@ def init(
         _tracer_provider = _setup_phoenix(
             endpoint=endpoint,
             service_name=service_name,
-            console=backend_kwargs.get("console", False),
+            console=console_enabled,
             auto_instrument=auto_instrument,
         )
 
@@ -473,7 +457,7 @@ def init(
         _tracer_provider = _setup_mlflow(
             endpoint=tracking_uri,
             service_name=experiment_name,
-            console=backend_kwargs.get("console", False),
+            console=console_enabled,
         )
 
     _backend_type = effective_backend

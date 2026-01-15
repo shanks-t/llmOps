@@ -1,14 +1,16 @@
 """Integration tests for MLflow backend configuration.
 
-These tests verify the complete MLflow setup including:
+These tests verify the complete MLflow setup per MLflow ADK docs:
+https://mlflow.org/docs/latest/genai/tracing/integrations/listing/google-adk/
+
+Key behaviors:
 - Tracking URI configuration
 - Experiment setup
-- mlflow.autolog() enablement
-- OTLP exporter for ADK tracing
+- OTLP exporter for ADK tracing (not mlflow.autolog or mlflow.tracing.enable)
 """
 
 import pytest
-from unittest.mock import patch, Mock
+from unittest.mock import patch
 
 
 @pytest.fixture
@@ -28,19 +30,17 @@ class TestMlflowConfiguration:
         """
         with patch.object(mock_mlflow, "set_tracking_uri") as mock_set_uri:
             with patch.object(mock_mlflow, "set_experiment"):
-                with patch.object(mock_mlflow.tracing, "enable"):
-                    with patch.object(mock_mlflow, "autolog"):
-                        import llmops
+                import llmops
 
-                        llmops.configure(
-                            backend="mlflow",
-                            endpoint="http://mlflow.example.com:5001",
-                            service_name="test",
-                        )
+                llmops.configure(
+                    backend="mlflow",
+                    endpoint="http://mlflow.example.com:5001",
+                    service_name="test",
+                )
 
-                        mock_set_uri.assert_called_once_with(
-                            "http://mlflow.example.com:5001"
-                        )
+                mock_set_uri.assert_called_once_with(
+                    "http://mlflow.example.com:5001"
+                )
 
     def test_mlflow_sets_experiment_to_service_name(self, mock_mlflow):
         """GIVEN mlflow backend
@@ -49,101 +49,61 @@ class TestMlflowConfiguration:
         """
         with patch.object(mock_mlflow, "set_tracking_uri"):
             with patch.object(mock_mlflow, "set_experiment") as mock_set_exp:
-                with patch.object(mock_mlflow.tracing, "enable"):
-                    with patch.object(mock_mlflow, "autolog"):
-                        import llmops
+                import llmops
 
-                        llmops.configure(
-                            backend="mlflow",
-                            endpoint="http://localhost:5001",
-                            service_name="my-experiment-name",
-                        )
+                llmops.configure(
+                    backend="mlflow",
+                    endpoint="http://localhost:5001",
+                    service_name="my-experiment-name",
+                )
 
-                        mock_set_exp.assert_called_once_with("my-experiment-name")
-
-    def test_mlflow_enables_tracing(self, mock_mlflow):
-        """GIVEN mlflow backend
-        WHEN llmops.configure() is called
-        THEN mlflow.tracing.enable() is called.
-        """
-        with patch.object(mock_mlflow, "set_tracking_uri"):
-            with patch.object(mock_mlflow, "set_experiment"):
-                with patch.object(mock_mlflow.tracing, "enable") as mock_enable:
-                    with patch.object(mock_mlflow, "autolog"):
-                        import llmops
-
-                        llmops.configure(
-                            backend="mlflow",
-                            endpoint="http://localhost:5001",
-                            service_name="test",
-                        )
-
-                        mock_enable.assert_called_once()
-
-    def test_mlflow_enables_autolog(self, mock_mlflow):
-        """GIVEN mlflow backend
-        WHEN llmops.configure() is called
-        THEN mlflow.autolog() is called with log_traces=True.
-        """
-        with patch.object(mock_mlflow, "set_tracking_uri"):
-            with patch.object(mock_mlflow, "set_experiment"):
-                with patch.object(mock_mlflow.tracing, "enable"):
-                    with patch.object(mock_mlflow, "autolog") as mock_autolog:
-                        import llmops
-
-                        llmops.configure(
-                            backend="mlflow",
-                            endpoint="http://localhost:5001",
-                            service_name="test",
-                        )
-
-                        mock_autolog.assert_called_once()
-                        call_kwargs = mock_autolog.call_args.kwargs
-                        assert call_kwargs.get("log_traces") is True
-
-    def test_mlflow_autolog_disables_model_logging(self, mock_mlflow):
-        """GIVEN mlflow backend
-        WHEN llmops.configure() is called
-        THEN mlflow.autolog() has log_models=False.
-        """
-        with patch.object(mock_mlflow, "set_tracking_uri"):
-            with patch.object(mock_mlflow, "set_experiment"):
-                with patch.object(mock_mlflow.tracing, "enable"):
-                    with patch.object(mock_mlflow, "autolog") as mock_autolog:
-                        import llmops
-
-                        llmops.configure(
-                            backend="mlflow",
-                            endpoint="http://localhost:5001",
-                            service_name="test",
-                        )
-
-                        call_kwargs = mock_autolog.call_args.kwargs
-                        assert call_kwargs.get("log_models") is False
+                mock_set_exp.assert_called_once_with("my-experiment-name")
 
     def test_mlflow_creates_otlp_exporter_for_adk(self, mock_mlflow):
         """GIVEN mlflow backend
         WHEN llmops.configure() is called
         THEN OTLP exporter is created for ADK tracing to /v1/traces.
+
+        Per MLflow ADK docs, ADK tracing uses OTLP exporter, not mlflow.autolog().
         """
         with patch(
             "opentelemetry.exporter.otlp.proto.http.trace_exporter.OTLPSpanExporter"
         ) as mock_exporter:
             with patch.object(mock_mlflow, "set_tracking_uri"):
                 with patch.object(mock_mlflow, "set_experiment"):
-                    with patch.object(mock_mlflow.tracing, "enable"):
-                        with patch.object(mock_mlflow, "autolog"):
-                            import llmops
+                    import llmops
 
-                            llmops.configure(
-                                backend="mlflow",
-                                endpoint="http://localhost:5001",
-                                service_name="test",
-                            )
+                    llmops.configure(
+                        backend="mlflow",
+                        endpoint="http://localhost:5001",
+                        service_name="test",
+                    )
 
-                            mock_exporter.assert_called_once()
-                            call_kwargs = mock_exporter.call_args.kwargs
-                            assert "/v1/traces" in call_kwargs.get("endpoint", "")
+                    mock_exporter.assert_called_once()
+                    call_kwargs = mock_exporter.call_args.kwargs
+                    assert "/v1/traces" in call_kwargs.get("endpoint", "")
+
+    def test_mlflow_otlp_exporter_has_experiment_id_header(self, mock_mlflow):
+        """GIVEN mlflow backend
+        WHEN llmops.configure() is called
+        THEN OTLP exporter has x-mlflow-experiment-id header.
+        """
+        with patch(
+            "opentelemetry.exporter.otlp.proto.http.trace_exporter.OTLPSpanExporter"
+        ) as mock_exporter:
+            with patch.object(mock_mlflow, "set_tracking_uri"):
+                with patch.object(mock_mlflow, "set_experiment"):
+                    import llmops
+
+                    llmops.configure(
+                        backend="mlflow",
+                        endpoint="http://localhost:5001",
+                        service_name="test",
+                    )
+
+                    call_kwargs = mock_exporter.call_args.kwargs
+                    headers = call_kwargs.get("headers", {})
+                    assert "x-mlflow-experiment-id" in headers
 
     def test_mlflow_sets_global_tracer_provider(self, mock_mlflow):
         """GIVEN mlflow backend
@@ -154,19 +114,37 @@ class TestMlflowConfiguration:
 
         with patch.object(mock_mlflow, "set_tracking_uri"):
             with patch.object(mock_mlflow, "set_experiment"):
-                with patch.object(mock_mlflow.tracing, "enable"):
-                    with patch.object(mock_mlflow, "autolog"):
-                        import llmops
+                import llmops
 
-                        llmops.configure(
-                            backend="mlflow",
-                            endpoint="http://localhost:5001",
-                            service_name="test",
-                        )
+                llmops.configure(
+                    backend="mlflow",
+                    endpoint="http://localhost:5001",
+                    service_name="test",
+                )
 
-                        provider = trace.get_tracer_provider()
-                        assert provider is not None
-                        assert type(provider).__name__ == "TracerProvider"
+                provider = trace.get_tracer_provider()
+                assert provider is not None
+                assert type(provider).__name__ == "TracerProvider"
+
+    def test_mlflow_uses_simple_span_processor(self, mock_mlflow):
+        """GIVEN mlflow backend
+        WHEN llmops.configure() is called
+        THEN SimpleSpanProcessor is used (per MLflow ADK docs).
+        """
+        with patch(
+            "opentelemetry.sdk.trace.export.SimpleSpanProcessor"
+        ) as mock_processor:
+            with patch.object(mock_mlflow, "set_tracking_uri"):
+                with patch.object(mock_mlflow, "set_experiment"):
+                    import llmops
+
+                    llmops.configure(
+                        backend="mlflow",
+                        endpoint="http://localhost:5001",
+                        service_name="test",
+                    )
+
+                    mock_processor.assert_called()
 
 
 class TestMlflowWithInit:
@@ -179,14 +157,12 @@ class TestMlflowWithInit:
         """
         with patch.object(mock_mlflow, "set_tracking_uri"):
             with patch.object(mock_mlflow, "set_experiment"):
-                with patch.object(mock_mlflow.tracing, "enable"):
-                    with patch.object(mock_mlflow, "autolog"):
-                        import llmops
+                import llmops
 
-                        llmops.init(config_path=mlflow_config_yaml)
+                llmops.init(config_path=mlflow_config_yaml)
 
-                        assert llmops.is_configured()
-                        assert llmops.get_backend() == "mlflow"
+                assert llmops.is_configured()
+                assert llmops.get_backend() == "mlflow"
 
     def test_init_mlflow_uses_service_name_as_experiment(
         self, mlflow_config_yaml, mock_mlflow
@@ -197,69 +173,70 @@ class TestMlflowWithInit:
         """
         with patch.object(mock_mlflow, "set_tracking_uri"):
             with patch.object(mock_mlflow, "set_experiment") as mock_set_exp:
-                with patch.object(mock_mlflow.tracing, "enable"):
-                    with patch.object(mock_mlflow, "autolog"):
-                        import llmops
+                import llmops
 
-                        llmops.init(config_path=mlflow_config_yaml)
+                llmops.init(config_path=mlflow_config_yaml)
 
-                        mock_set_exp.assert_called_once_with("integration-test-service")
+                mock_set_exp.assert_called_once_with("integration-test-service")
 
 
 class TestMlflowConsoleOutput:
     """Tests for MLflow console output functionality."""
 
-    def test_mlflow_console_enables_trace_logging(self, mock_mlflow):
+    def test_mlflow_console_adds_console_exporter(self, mock_mlflow, capsys):
         """GIVEN mlflow backend with console=True
         WHEN llmops.configure() is called
-        THEN MLFLOW_ENABLE_TRACE_LOGGING env var is set.
+        THEN ConsoleSpanExporter is added.
         """
-        import os
-
-        # Clear the env var first
-        os.environ.pop("MLFLOW_ENABLE_TRACE_LOGGING", None)
-
         with patch.object(mock_mlflow, "set_tracking_uri"):
             with patch.object(mock_mlflow, "set_experiment"):
-                with patch.object(mock_mlflow.tracing, "enable"):
-                    with patch.object(mock_mlflow, "autolog"):
-                        import llmops
+                import llmops
 
-                        llmops.configure(
-                            backend="mlflow",
-                            endpoint="http://localhost:5001",
-                            service_name="test",
-                            console=True,
-                        )
+                llmops.configure(
+                    backend="mlflow",
+                    endpoint="http://localhost:5001",
+                    service_name="test",
+                    console=True,
+                )
 
-                        assert os.environ.get("MLFLOW_ENABLE_TRACE_LOGGING") == "true"
+                captured = capsys.readouterr()
+                assert "Console exporter enabled" in captured.out
 
 
 class TestMlflowShutdown:
     """Tests for MLflow shutdown behavior."""
 
-    def test_mlflow_shutdown_disables_tracing(self, mock_mlflow):
+    def test_mlflow_shutdown_flushes_provider(self, mock_mlflow):
         """GIVEN mlflow backend configured
         WHEN llmops.shutdown() is called
-        THEN mlflow.tracing.disable() is called.
+        THEN TracerProvider is flushed and shutdown.
+
+        Note: Per MLflow ADK docs, we don't use mlflow.tracing.disable()
+        since we use OTLP-based tracing, not MLflow native tracing.
         """
+        from unittest.mock import Mock
+
         with patch.object(mock_mlflow, "set_tracking_uri"):
             with patch.object(mock_mlflow, "set_experiment"):
-                with patch.object(mock_mlflow.tracing, "enable"):
-                    with patch.object(mock_mlflow, "autolog"):
-                        import llmops
+                with patch(
+                    "opentelemetry.sdk.trace.TracerProvider"
+                ) as mock_provider_class:
+                    mock_provider = Mock()
+                    mock_provider_class.return_value = mock_provider
 
-                        llmops.configure(
-                            backend="mlflow",
-                            endpoint="http://localhost:5001",
-                            service_name="test",
-                        )
+                    import llmops
 
-        with patch.object(mock_mlflow.tracing, "disable") as mock_disable:
-            import llmops
+                    llmops.configure(
+                        backend="mlflow",
+                        endpoint="http://localhost:5001",
+                        service_name="test",
+                    )
 
-            llmops.shutdown()
-            mock_disable.assert_called_once()
+        import llmops
+
+        llmops.shutdown()
+        mock_provider.force_flush.assert_called_once()
+        mock_provider.shutdown.assert_called_once()
 
 
 class TestMlflowNotInstalled:

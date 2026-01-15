@@ -22,30 +22,6 @@ Prerequisites:
 Run:
     uv run uvicorn examples.server:app --reload
 
-Test:
-    # Simple chat
-    curl -X POST http://localhost:8000/chat \
-        -H "Content-Type: application/json" \
-        -d '{"message": "What is the capital of France?"}'
-
-    # Travel agent with tools
-    curl -X POST http://localhost:8000/travel \
-        -H "Content-Type: application/json" \
-        -d '{"query": "Plan a weekend trip to Tokyo"}'
-
-    # Code assistant
-    curl -X POST http://localhost:8000/code \
-        -H "Content-Type: application/json" \
-        -d '{"task": "generate", "prompt": "Write a Python function to calculate fibonacci numbers"}'
-
-    # Research workflow
-    curl -X POST http://localhost:8000/research \
-        -H "Content-Type: application/json" \
-        -d '{"topic": "quantum computing applications in healthcare"}'
-
-    # Streaming response
-    curl -N http://localhost:8000/stream?prompt=Explain%20machine%20learning
-
 View traces:
     Phoenix: http://localhost:6006
     MLflow: http://localhost:5001
@@ -67,9 +43,12 @@ from pydantic import BaseModel
 load_dotenv()
 
 # Initialize LLM Ops SDK with auto-instrumentation BEFORE importing ADK
+from pathlib import Path
 import llmops
 
-llmops.init()
+# Load config from the examples directory
+config_path = Path(__file__).parent / "llmops.yaml"
+llmops.init(config_path=config_path)
 
 # Now import Google ADK components
 from google import genai

@@ -28,7 +28,7 @@ class TestMlflowConfiguration:
         WHEN llmops.init() is called
         THEN SDK configures successfully.
         """
-        mlflow = pytest.importorskip("mlflow")
+        pytest.importorskip("mlflow")
         import llmops
 
         llmops.init(config_path=e2e_config_yaml_mlflow)
@@ -43,7 +43,7 @@ class TestMlflowConfiguration:
         WHEN llmops.init() is called
         THEN experiment is created in MLflow.
         """
-        mlflow = pytest.importorskip("mlflow")
+        pytest.importorskip("mlflow")
         import llmops
 
         llmops.init(config_path=e2e_config_yaml_mlflow)
@@ -71,7 +71,7 @@ class TestMlflowSpanExport:
         WHEN spans are created
         THEN they are exported via OTLP to MLflow.
         """
-        mlflow = pytest.importorskip("mlflow")
+        pytest.importorskip("mlflow")
         import llmops
         from opentelemetry import trace
 
@@ -94,7 +94,7 @@ class TestMlflowSpanExport:
         WHEN parent and child spans are created
         THEN hierarchy is preserved.
         """
-        mlflow = pytest.importorskip("mlflow")
+        pytest.importorskip("mlflow")
         import llmops
         from opentelemetry import trace
 
@@ -121,7 +121,7 @@ class TestMlflowLLMTracing:
         WHEN exported to MLflow
         THEN semantic attributes are preserved.
         """
-        mlflow = pytest.importorskip("mlflow")
+        pytest.importorskip("mlflow")
         import llmops
         from opentelemetry import trace
 
@@ -144,7 +144,7 @@ class TestMlflowLLMTracing:
         WHEN exported to MLflow
         THEN agent/tool/LLM structure is captured.
         """
-        mlflow = pytest.importorskip("mlflow")
+        pytest.importorskip("mlflow")
         import llmops
         from opentelemetry import trace
 
@@ -175,7 +175,7 @@ class TestMlflowAutolog:
         WHEN SDK initializes
         THEN mlflow.autolog is enabled.
         """
-        mlflow = pytest.importorskip("mlflow")
+        pytest.importorskip("mlflow")
         import llmops
 
         # Verify autolog was called during init

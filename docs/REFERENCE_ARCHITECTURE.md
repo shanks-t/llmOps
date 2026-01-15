@@ -65,8 +65,10 @@ The auto-instrumentation layer orchestrates backend-provided instrumentors based
 
 | Backend | Instrumentor Source | Libraries Supported |
 |---------|--------------------|--------------------|
-| **Arize Phoenix** | OpenInference | OpenAI, Anthropic, LangChain, LlamaIndex, Google GenAI, Bedrock, Mistral, Groq, VertexAI |
-| **MLflow** | MLflow native | OpenAI, Anthropic, LangChain, LlamaIndex, AutoGen, DSPy, Google GenAI |
+| **Arize Phoenix** | OpenInference | OpenAI, Anthropic, LangChain, LlamaIndex, Google GenAI, Google ADK, Bedrock, Mistral, Groq, VertexAI |
+| **MLflow** | OTLP (for Google ADK) | Google ADK traces via OTLP exporter to MLflow's `/v1/traces` endpoint |
+
+**Note on MLflow + Google ADK:** Per [MLflow ADK documentation](https://mlflow.org/docs/latest/genai/tracing/integrations/listing/google-adk/), Google ADK tracing uses OTLP-based export directly to MLflow, not `mlflow.autolog()` or `mlflow.tracing.enable()`. The SDK sets up an `OTLPSpanExporter` with the `x-mlflow-experiment-id` header.
 
 #### 2.4.2 init() Function
 
@@ -145,16 +147,33 @@ def _init_phoenix_instrumentors(config: Config) -> None:
 
 
 def _init_mlflow_instrumentors(config: Config) -> None:
-    """Initialize MLflow auto-instrumentation."""
+    """Initialize MLflow with OTLP for Google ADK tracing.
+
+    Per MLflow ADK docs: https://mlflow.org/docs/latest/genai/tracing/integrations/listing/google-adk/
+    Google ADK tracing uses OTLP export, NOT mlflow.autolog() or mlflow.tracing.enable().
+    """
     import mlflow
+    from opentelemetry import trace
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+    from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 
-    # MLflow's autolog enables instrumentation for all supported libraries
-    disabled = set(config.auto_instrumentation.disabled or [])
+    # Set tracking URI and experiment
+    mlflow.set_tracking_uri(config.mlflow.tracking_uri)
+    experiment = mlflow.set_experiment(config.service_name)
 
-    mlflow.tracing.enable(
-        tracer_provider=_get_tracer_provider(),
-        exclude=disabled,
+    # Setup OTLP exporter for ADK tracing to MLflow's /v1/traces endpoint
+    otlp_endpoint = f"{config.mlflow.tracking_uri.rstrip('/')}/v1/traces"
+    resource = Resource.create({SERVICE_NAME: config.service_name})
+    provider = TracerProvider(resource=resource)
+
+    exporter = OTLPSpanExporter(
+        endpoint=otlp_endpoint,
+        headers={"x-mlflow-experiment-id": experiment.experiment_id},
     )
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    trace.set_tracer_provider(provider)
 ```
 
 #### 2.4.4 Auto-instrumentation Invariants

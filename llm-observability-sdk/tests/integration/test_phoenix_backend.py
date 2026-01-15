@@ -6,7 +6,6 @@ These tests verify the complete Phoenix setup including:
 - OpenInference instrumentor enablement
 """
 
-import pytest
 from unittest.mock import patch, Mock
 from importlib import import_module
 
@@ -133,8 +132,6 @@ class TestPhoenixWithInit:
         THEN Resource.create() is called with correct SERVICE_NAME.
         """
         from opentelemetry.sdk.resources import SERVICE_NAME
-
-        configure_module = import_module("llmops.configure")
 
         captured_attrs = {}
 

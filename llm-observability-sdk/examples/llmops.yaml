@@ -1,12 +1,10 @@
-# LLM Ops SDK Configuration
+# LLM Ops SDK Configuration for Examples
 #
-# This configuration file is used by llmops.init() to set up auto-instrumentation.
-# Place this file in your project root or specify the path explicitly.
+# This configuration file is used by the example server.
 #
 # Usage:
 #   import llmops
-#   llmops.init()  # Uses ./llmops.yaml by default
-#   llmops.init(config_path="/path/to/llmops.yaml")  # Custom path
+#   llmops.init(config_path="examples/llmops.yaml")
 
 # Service identification
 service:
@@ -18,27 +16,23 @@ service:
 backend: phoenix
 
 # Phoenix backend configuration (OpenInference semantic conventions)
-# Phoenix provides rich LLM-specific observability with specialized UI
 phoenix:
   endpoint: http://localhost:6006/v1/traces
-  # project_name: my-project  # Optional: organize traces by project
 
-# MLflow backend configuration (native autolog)
-# MLflow integrates with ML experiment tracking and model registry
+# MLflow backend configuration (OTLP-based tracing for Google ADK)
 mlflow:
   tracking_uri: http://localhost:5001
-  # experiment_name: llmops-demo  # Optional: defaults to service.name
 
-# Privacy settings
-privacy:
+# Debug settings
+debug:
+  # Print traces to console for debugging
+  console: false
+
+# TODO: Privacy settings
+# privacy:
   # Capture input/output content in traces
-  # Set to false in production to avoid logging sensitive data
-  capture_content: true
+  # capture_content: true
 
 # Auto-instrumentation settings
 auto_instrumentation:
   enabled: true
-  # Optionally disable specific instrumentors
-  # disabled:
-  #   - langchain
-  #   - llamaindex

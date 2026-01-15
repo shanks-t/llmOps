@@ -715,15 +715,16 @@ def init(
         ConfigurationError: If configuration is invalid.
                            Only raised at startup, never during operation.
 
-    Supported Backends and Auto-Instrumented Libraries:
+    Supported Backends and Tracing:
 
         Phoenix (OpenInference):
-            OpenAI, Anthropic, LangChain, LlamaIndex, Google GenAI,
-            Bedrock, Mistral, Groq, VertexAI
+            Auto-instruments: OpenAI, Anthropic, LangChain, LlamaIndex,
+            Google GenAI, Google ADK, Bedrock, Mistral, Groq, VertexAI
 
-        MLflow:
-            OpenAI, Anthropic, LangChain, LlamaIndex, AutoGen,
-            DSPy, Google GenAI
+        MLflow (OTLP for Google ADK):
+            Google ADK traces via OTLP exporter to MLflow's /v1/traces endpoint.
+            Per MLflow docs, ADK tracing uses OTLP export with x-mlflow-experiment-id
+            header, NOT mlflow.autolog() or mlflow.tracing.enable().
 
     Examples:
         # Minimal setup (uses ./llmops.yaml)
