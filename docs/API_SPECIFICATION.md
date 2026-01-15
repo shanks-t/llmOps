@@ -1,7 +1,7 @@
 # LLM Observability SDK — API Specification
 
-**Version:** 1.0
-**Date:** 2026-01-13
+**Version:** 1.1
+**Date:** 2026-01-15
 **Status:** Draft
 
 ---
@@ -67,6 +67,7 @@ Decorators mark **semantic boundaries** — they declare what kind of operation 
 | `@llmops.tool()` | Tool/function execution | `name` (optional, defaults to function name) |
 | `@llmops.agent()` | Agent workflow | `name` (optional, defaults to function name) |
 | `@llmops.retrieve()` | Retrieval operation | `name` (optional, defaults to function name) |
+| `@llmops.embed()` | Embedding generation | `model` |
 | `@llmops.task()` | Generic task/step | `name` (optional, defaults to function name) |
 
 ### 3.2 `@llmops.llm()`
@@ -226,7 +227,55 @@ async def search_knowledge_base(query: str, top_k: int = 5) -> list[Document]:
     return results
 ```
 
-### 3.6 `@llmops.task()`
+### 3.6 `@llmops.embed()`
+
+Marks a function as an embedding generation operation.
+
+**Signature:**
+```python
+def embed(
+    *,
+    model: str,
+    name: str | None = None,
+    capture: bool | None = None,
+) -> Callable[[F], F]:
+    """
+    Mark a function as an embedding generation operation.
+
+    Args:
+        model: The embedding model identifier (e.g., "text-embedding-3-small").
+               Required. Used for gen_ai.request.model attribute.
+        name: Span name. Defaults to function name if not provided.
+        capture: Override content capture setting for this span.
+
+    Returns:
+        Decorated function with preserved signature.
+    """
+```
+
+**Example:**
+```python
+@llmops.embed(model="text-embedding-3-small")
+async def get_embedding(text: str) -> list[float]:
+    llmops.set_input(text)
+    response = await openai.embeddings.create(
+        model="text-embedding-3-small",
+        input=text
+    )
+    embedding = response.data[0].embedding
+    llmops.set_output({"dimensions": len(embedding)})
+    llmops.set_tokens(input=response.usage.prompt_tokens)
+    return embedding
+```
+
+**Resulting Span Attributes:**
+```
+gen_ai.operation.name: "embeddings"
+gen_ai.request.model: "text-embedding-3-small"
+gen_ai.usage.input_tokens: <from set_tokens>
+```
+
+### 3.7 `@llmops.task()`
 
 Marks a function as a generic task or step.
 
@@ -251,7 +300,7 @@ def task(
     """
 ```
 
-### 3.7 Decorator Invariants
+### 3.8 Decorator Invariants
 
 All decorators MUST:
 
@@ -1401,6 +1450,7 @@ async def stream(prompt: str):
 - `@llmops.tool(name?, capture?)`
 - `@llmops.agent(name?, capture?)`
 - `@llmops.retrieve(name?, capture?)`
+- `@llmops.embed(model, name?, capture?)`
 - `@llmops.task(name?, capture?)`
 
 ### Enrichment Functions
@@ -1437,9 +1487,10 @@ async def stream(prompt: str):
 |----------|---------|
 | [PRD](./PRD.md) | Requirements and success criteria |
 | [Conceptual Architecture](./CONCEPTUAL_ARCHITECTURE.md) | Visual system overview |
-| [Reference Architecture](./REFERENCE_ARCHITECTURE.md) | Technical patterns and invariants |
+| [Reference Architecture](./REFERENCE_ARCHITECTURE.md) | Technical patterns, invariants, and normative contracts |
+| [Semantic Conventions](./SEMANTICS.md) | Attribute mapping tables across backends |
 
 ---
 
 **Document Owner:** Platform Team
-**Last Updated:** 2026-01-13
+**Last Updated:** 2026-01-15
