@@ -7,6 +7,15 @@
 default: lint typecheck security test
 
 # =============================================================================
+# Development Setup
+# =============================================================================
+
+# Install/sync dependencies
+[group('dev')]
+install:
+    uv sync --all-extras
+
+# =============================================================================
 # Quality Checks
 # =============================================================================
 
@@ -93,7 +102,7 @@ stop-test-backends:
 # Run E2E tests with Docker (full workflow)
 [group('test')]
 test-e2e-full: start-test-backends
-    uv run pytest tests/integration/ -v -m e2e || true
+    -uv run pytest tests/integration/ -v -m e2e
     just stop-test-backends
 
 # =============================================================================
@@ -113,11 +122,6 @@ run-example backend="":
 [group('server')]
 start-phoenix:
     cd docker && docker-compose up phoenix -d
-
-# Start MLflow backend
-[group('server')]
-start-mlflow:
-    cd docker && docker-compose up mlflow -d
 
 # Start all backends
 [group('server')]

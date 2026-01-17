@@ -1,0 +1,219 @@
+"""
+GenAI Service - FastAPI with Google ADK and OpenTelemetry Instrumentation
+
+Dual-backend observability:
+- Infrastructure traces → Jaeger (OTLP)
+- GenAI traces → Arize (OpenInference)
+
+Run:
+    cd examples/genai_service
+    uv run uvicorn main:app --reload
+
+View traces:
+    Jaeger: http://localhost:16686
+    Arize: https://app.arize.com
+"""
+
+from __future__ import annotations
+
+import os
+from contextlib import asynccontextmanager
+
+from dotenv import load_dotenv
+from fastapi import FastAPI, Query
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
+
+load_dotenv()
+
+from agents import (  # noqa: E402
+    chat_agent,
+    code_agent,
+    research_agent,
+    run_agent,
+    stream_agent_response,
+    travel_agent,
+)
+from observability import setup_opentelemetry, shutdown_opentelemetry  # noqa: E402
+
+# =============================================================================
+# REQUEST/RESPONSE MODELS
+# =============================================================================
+
+
+class ChatRequest(BaseModel):
+    message: str
+
+
+class ChatResponse(BaseModel):
+    message: str
+    response: str
+
+
+class TravelRequest(BaseModel):
+    query: str
+    user_id: str = "default_user"
+
+
+class TravelResponse(BaseModel):
+    query: str
+    response: str
+    tools_used: list[str]
+
+
+class CodeRequest(BaseModel):
+    task: str  # "generate", "explain", or "review"
+    prompt: str
+    language: str = "python"
+
+
+class CodeResponse(BaseModel):
+    task: str
+    prompt: str
+    response: str
+
+
+class ResearchRequest(BaseModel):
+    topic: str
+    depth: str = "standard"  # "quick", "standard", or "deep"
+
+
+class ResearchResponse(BaseModel):
+    topic: str
+    summary: str
+    sources: list[str]
+    key_findings: list[str]
+
+
+# =============================================================================
+# APP & LIFESPAN
+# =============================================================================
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Initialize OpenTelemetry on startup, flush traces on shutdown."""
+    tracer_provider = setup_opentelemetry()
+    yield
+    shutdown_opentelemetry(tracer_provider)
+
+
+app = FastAPI(
+    title="GenAI Service",
+    description="LLM workflow patterns with dual-backend observability",
+    version="1.0.0",
+    lifespan=lifespan,
+)
+
+
+# =============================================================================
+# ROUTES
+# =============================================================================
+
+
+@app.get("/")
+async def root():
+    """Service information."""
+    return {
+        "service": "GenAI Service",
+        "version": "1.0.0",
+        "observability": {
+            "otel_enabled": os.getenv("OTEL_ENABLED", "true").lower() == "true",
+            "otel_endpoint": os.getenv("OTEL_ENDPOINT", "http://localhost:4318/v1/traces"),
+            "arize_enabled": os.getenv("ARIZE_ENABLED", "true").lower() == "true",
+        },
+        "endpoints": {
+            "POST /chat": "Simple conversation",
+            "POST /travel": "Multi-tool travel agent",
+            "POST /code": "Code generation/explanation/review",
+            "POST /research": "RAG workflow",
+            "GET /stream": "SSE streaming",
+        },
+    }
+
+
+@app.get("/health")
+async def health():
+    """Health check."""
+    return {
+        "status": "healthy",
+        "google_api_key": "configured" if os.getenv("GOOGLE_API_KEY") else "missing",
+        "arize_configured": bool(os.getenv("ARIZE_API_KEY") and os.getenv("ARIZE_SPACE_ID")),
+    }
+
+
+@app.post("/chat", response_model=ChatResponse)
+async def chat(request: ChatRequest):
+    """Simple single-turn LLM conversation."""
+    response, _ = await run_agent(chat_agent, request.message)
+    return ChatResponse(message=request.message, response=response)
+
+
+@app.post("/travel", response_model=TravelResponse)
+async def travel(request: TravelRequest):
+    """Multi-tool travel planning agent."""
+    response, tools_used = await run_agent(
+        travel_agent,
+        request.query,
+        user_id=request.user_id,
+    )
+    return TravelResponse(
+        query=request.query,
+        response=response,
+        tools_used=list(set(tools_used)),
+    )
+
+
+@app.post("/code", response_model=CodeResponse)
+async def code(request: CodeRequest):
+    """Code generation, explanation, and review."""
+    task_prompts = {
+        "generate": f"Generate {request.language} code for: {request.prompt}",
+        "explain": f"Explain this {request.language} code: {request.prompt}",
+        "review": f"Review this {request.language} code for bugs and improvements: {request.prompt}",
+    }
+    prompt = task_prompts.get(request.task, request.prompt)
+    response, _ = await run_agent(code_agent, prompt)
+    return CodeResponse(task=request.task, prompt=request.prompt, response=response)
+
+
+@app.post("/research", response_model=ResearchResponse)
+async def research(request: ResearchRequest):
+    """Sequential multi-step research workflow (RAG pattern)."""
+    depth_instructions = {
+        "quick": "Provide a brief overview with 2-3 key points.",
+        "standard": "Provide a comprehensive summary with key findings and sources.",
+        "deep": "Provide an exhaustive analysis covering all aspects, nuances, and implications.",
+    }
+
+    prompt = f"""Research the following topic: {request.topic}
+
+    Depth level: {request.depth}
+    Instructions: {depth_instructions.get(request.depth, depth_instructions["standard"])}
+
+    Use the search_knowledge_base tool to find information, then analyze and synthesize your findings.
+    Structure your response with: Summary, Key Findings (as bullet points), and Sources."""
+
+    response, tools_used = await run_agent(research_agent, prompt)
+
+    sources = ["search_knowledge_base"] if "search_knowledge_base" in tools_used else []
+    key_findings = [line.strip() for line in response.split("\n") if line.strip().startswith("-")][
+        :5
+    ]
+
+    return ResearchResponse(
+        topic=request.topic,
+        summary=response,
+        sources=sources,
+        key_findings=key_findings if key_findings else ["See summary for details"],
+    )
+
+
+@app.get("/stream")
+async def stream(prompt: str = Query(..., description="The prompt for streaming response")):
+    """Streaming response via Server-Sent Events."""
+    return StreamingResponse(
+        stream_agent_response(chat_agent, prompt),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+    )
