@@ -1,0 +1,156 @@
+# Justfile for GenAI Service
+# Run `just` to see available commands
+# Run `just --list` to see all recipes organized by group
+
+set dotenv-load := true
+
+# Default recipe shows available commands
+default:
+    @just --list
+
+# =============================================================================
+# Quality Checks
+# =============================================================================
+
+# Run all quality checks
+[group('quality')]
+check: lint typecheck
+
+# Run Ruff linter
+[group('quality')]
+lint:
+    uv run ruff check .
+
+# Run Ruff linter with auto-fix
+[group('quality')]
+lint-fix:
+    uv run ruff check --fix .
+
+# Run Ruff formatter
+[group('quality')]
+format:
+    uv run ruff format .
+
+# Check formatting without changes
+[group('quality')]
+format-check:
+    uv run ruff format --check .
+
+# Run MyPy type checker
+[group('quality')]
+typecheck:
+    uv run mypy .
+
+# =============================================================================
+# Infrastructure
+# =============================================================================
+
+# Start Jaeger (OTLP backend for infrastructure traces)
+[group('infra')]
+start-jaeger:
+    docker compose -f ../../docker/docker-compose.yaml up jaeger -d
+    @echo "Jaeger UI: http://localhost:16686"
+    @echo "OTLP endpoint: http://localhost:4318/v1/traces"
+
+# Stop Jaeger
+[group('infra')]
+stop-jaeger:
+    docker compose -f ../../docker/docker-compose.yaml down jaeger
+
+# Start all backends (Jaeger + Phoenix + MLflow)
+[group('infra')]
+start-backends:
+    docker compose -f ../../docker/docker-compose.yaml up -d
+
+# Stop all backends
+[group('infra')]
+stop-backends:
+    docker compose -f ../../docker/docker-compose.yaml down
+
+# Show backend status
+[group('infra')]
+status:
+    @docker compose -f ../../docker/docker-compose.yaml ps
+
+# =============================================================================
+# Server
+# =============================================================================
+
+# Run the GenAI service
+[group('server')]
+run:
+    uv run uvicorn main:app --reload
+
+# Run with console debug output (prints spans to stdout)
+[group('server')]
+run-debug:
+    OTEL_CONSOLE_DEBUG=true uv run uvicorn main:app --reload
+
+# Run with Arize disabled (Jaeger only)
+[group('server')]
+run-jaeger-only:
+    ARIZE_ENABLED=false uv run uvicorn main:app --reload
+
+# =============================================================================
+# Example Requests
+# =============================================================================
+
+# Test /chat endpoint - simple conversation
+[group('examples')]
+chat message="What is the capital of France?":
+    curl -s -X POST http://localhost:8000/chat \
+        -H "Content-Type: application/json" \
+        -d '{"message": "{{message}}"}' | jq
+
+# Test /travel endpoint - multi-tool travel agent
+[group('examples')]
+travel query="Plan a weekend trip to Tokyo":
+    curl -s -X POST http://localhost:8000/travel \
+        -H "Content-Type: application/json" \
+        -d '{"query": "{{query}}"}' | jq
+
+# Test /code endpoint - code generation/explanation/review
+[group('examples')]
+code task="generate" prompt="Write a Python function to calculate fibonacci numbers":
+    curl -s -X POST http://localhost:8000/code \
+        -H "Content-Type: application/json" \
+        -d '{"task": "{{task}}", "prompt": "{{prompt}}"}' | jq
+
+# Test /research endpoint - RAG workflow
+[group('examples')]
+research topic="quantum computing applications":
+    curl -s -X POST http://localhost:8000/research \
+        -H "Content-Type: application/json" \
+        -d '{"topic": "{{topic}}"}' | jq
+
+# Test /stream endpoint - SSE streaming
+[group('examples')]
+stream prompt="Explain how photosynthesis works":
+    curl -N --get --data-urlencode "prompt={{prompt}}" http://localhost:8000/stream
+
+# Test /health endpoint
+[group('examples')]
+health:
+    curl -s http://localhost:8000/health | jq
+
+# Test root endpoint (service info)
+[group('examples')]
+info:
+    curl -s http://localhost:8000/ | jq
+
+# =============================================================================
+# Development Workflow
+# =============================================================================
+
+# Full dev setup: install deps, start backends, run service
+[group('dev')]
+dev: install start-jaeger run
+
+# Install/sync dependencies
+[group('dev')]
+install:
+    uv sync
+
+# Quick start: assumes deps installed, just starts jaeger and runs
+[group('dev')]
+quick: start-jaeger run

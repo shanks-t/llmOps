@@ -1,6 +1,23 @@
 version: "3.8"
 
 services:
+  # Jaeger - Open source distributed tracing (OTLP-compatible)
+  jaeger:
+    image: jaegertracing/jaeger:latest
+    platform: linux/arm64
+    ports:
+      - "16686:16686"   # UI
+      - "4317:4317"     # OTLP gRPC
+      - "4318:4318"     # OTLP HTTP
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:16686"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
   phoenix:
     image: arizephoenix/phoenix:latest
     platform: linux/arm64
@@ -17,26 +34,5 @@ services:
       retries: 3
       start_period: 10s
 
-  mlflow:
-    image: ghcr.io/mlflow/mlflow:latest
-    platform: linux/arm64
-    ports:
-      - "5001:5000"
-    volumes:
-      - mlflow-data:/mlflow
-    command: >
-      mlflow server
-      --host 0.0.0.0
-      --port 5000
-      --backend-store-uri sqlite:///mlflow/mlflow.db
-      --default-artifact-root /mlflow/artifacts
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-
 volumes:
   phoenix-data:
-  mlflow-data:
