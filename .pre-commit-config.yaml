@@ -1,0 +1,33 @@
+repos:
+  - repo: local
+    hooks:
+      - id: sdk-lint
+        name: sdk lint
+        entry: just sdk::lint
+        language: system
+        pass_filenames: false
+        files: ^llm-observability-sdk/
+      - id: sdk-typecheck
+        name: sdk typecheck
+        entry: just sdk::typecheck
+        language: system
+        pass_filenames: false
+        files: ^llm-observability-sdk/
+      - id: sdk-security
+        name: sdk security
+        entry: just sdk::security
+        language: system
+        pass_filenames: false
+        files: ^llm-observability-sdk/
+      - id: sdk-test
+        name: sdk test
+        entry: just sdk::test
+        language: system
+        pass_filenames: false
+        files: ^llm-observability-sdk/
+      - id: genai-check
+        name: genai check
+        entry: just genai-check
+        language: system
+        pass_filenames: false
+        files: ^llm-observability-sdk/examples/genai_service/

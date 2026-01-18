@@ -1,7 +1,7 @@
 """Tests for llmops.configure() - BDD/TDD test suite.
 
 These tests define the expected behavior and invariants for backend configuration.
-Use red-green-refactor pattern: write failing tests first, then implement.
+Use red-green-refactor pattern: write failing tests first, then implement
 """
 
 import pytest

@@ -2,7 +2,7 @@
 LLM Observability SDK — Unified auto-instrumentation for LLM applications.
 
 This SDK provides a thin orchestration layer over existing auto-instrumentation
-libraries. Each backend uses its native instrumentation:
+libraries. Each backend uses its native instrumentation.
 
 - Phoenix: OpenInference semantic conventions
 - MLflow: MLflow native autolog

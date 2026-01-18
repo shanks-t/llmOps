@@ -1,4 +1,4 @@
-"""Main configuration entry point."""
+"""Main configuration entry point"""
 
 from __future__ import annotations
 

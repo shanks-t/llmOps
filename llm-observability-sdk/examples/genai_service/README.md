@@ -1,6 +1,6 @@
 # GenAI Service
 
-A FastAPI service demonstrating Google ADK agents with dual-backend OpenTelemetry observability.
+A FastAPI service demonstrating Google ADK agents with dual-backend OpenTelemetry observability and local tooling.
 
 ## Architecture
 

@@ -32,6 +32,19 @@ cargo install just
 pip install uv
 ```
 
+### Prek Hooks
+
+This repo uses [prek](https://prek.j178.dev/) (a fast `pre-commit` replacement) to run local quality checks on every commit.
+
+```bash
+# Install prek (see https://prek.j178.dev/installation/ for options)
+# Wire hooks into git
+prek install
+
+# Run hooks manually
+prek run
+```
+
 ## Installation
 
 ```bash
