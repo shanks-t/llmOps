@@ -1,0 +1,160 @@
+# =============================================================================
+# LLMOps SDK Configuration Example
+# =============================================================================
+# Copy this file to llmops.yaml and customize for your environment.
+#
+# All ${VAR_NAME} patterns are substituted with environment variable values.
+# In strict mode, missing env vars raise errors. In permissive mode, they
+# become empty strings with a warning.
+
+# -----------------------------------------------------------------------------
+# Service Configuration (required)
+# -----------------------------------------------------------------------------
+service:
+  name: my-service                    # Required: identifies your service in traces
+  version: "1.0.0"                    # Optional: service version for trace metadata
+
+# -----------------------------------------------------------------------------
+# Arize Telemetry Configuration (required)
+# -----------------------------------------------------------------------------
+arize:
+  # Required: OTLP endpoint for trace export
+  # For Arize cloud: https://otlp.arize.com/v1/traces
+  # For Phoenix local: http://localhost:6006/v1/traces
+  endpoint: ${ARIZE_ENDPOINT}
+
+  # Optional: Arize authentication (required for Arize cloud)
+  space_id: ${ARIZE_SPACE_ID}
+  api_key: ${ARIZE_API_KEY}
+
+  # Optional: Project name for organizing traces in Arize
+  project_name: ${ARIZE_PROJECT_NAME}
+
+  # Optional: TLS certificate configuration
+  # Can also be set via standard OTEL environment variables:
+  #   - OTEL_EXPORTER_OTLP_CERTIFICATE
+  #   - OTEL_EXPORTER_OTLP_CLIENT_KEY
+  #   - OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE
+  # certificate_file: /path/to/ca-bundle.pem        # CA cert for server verification
+  # client_key_file: /path/to/client-key.pem       # Client private key (mTLS)
+  # client_certificate_file: /path/to/client.pem   # Client certificate (mTLS)
+
+  # Optional: TracerProvider creation mode (default: true)
+  # - true: Use arize.otel.register if arize-otel package is installed
+  # - false: Always use manual OTLP setup
+  use_arize_otel: true
+
+# -----------------------------------------------------------------------------
+# Auto-Instrumentation Configuration (optional)
+# -----------------------------------------------------------------------------
+instrumentation:
+  google_adk: true      # Enable Google ADK instrumentation (default: true)
+  google_genai: true    # Enable Google GenAI instrumentation (default: true)
+
+# -----------------------------------------------------------------------------
+# Privacy Configuration (optional)
+# -----------------------------------------------------------------------------
+privacy:
+  capture_content: false    # Capture LLM input/output content (default: false)
+
+# -----------------------------------------------------------------------------
+# Validation Configuration (optional)
+# -----------------------------------------------------------------------------
+validation:
+  # Mode options:
+  # - "strict": Raise errors for missing env vars, invalid config, missing cert files
+  # - "permissive": Log warnings and continue with defaults (default)
+  mode: permissive
+
+
+# =============================================================================
+# Example Configurations
+# =============================================================================
+# Below are example configurations for common scenarios. Uncomment and modify
+# as needed, or use as reference for your own configuration.
+
+# -----------------------------------------------------------------------------
+# Example: Local Development with Phoenix
+# -----------------------------------------------------------------------------
+# service:
+#   name: my-llm-app
+#   version: "0.1.0"
+#
+# arize:
+#   endpoint: http://localhost:6006/v1/traces
+#   use_arize_otel: false  # Phoenix doesn't need arize.otel
+#
+# instrumentation:
+#   google_adk: true
+#   google_genai: true
+#
+# validation:
+#   mode: permissive
+
+# -----------------------------------------------------------------------------
+# Example: Production with Arize Cloud
+# -----------------------------------------------------------------------------
+# service:
+#   name: production-llm-service
+#   version: "2.0.0"
+#
+# arize:
+#   endpoint: https://otlp.arize.com/v1/traces
+#   space_id: ${ARIZE_SPACE_ID}
+#   api_key: ${ARIZE_API_KEY}
+#   project_name: ${ARIZE_PROJECT_NAME}
+#   use_arize_otel: true  # Use arize.otel.register
+#
+# instrumentation:
+#   google_adk: true
+#   google_genai: true
+#
+# privacy:
+#   capture_content: false  # Don't log sensitive content in production
+#
+# validation:
+#   mode: strict  # Fail fast on configuration errors
+
+# -----------------------------------------------------------------------------
+# Example: Production with TLS Certificate
+# -----------------------------------------------------------------------------
+# service:
+#   name: secure-llm-service
+#   version: "1.0.0"
+#
+# arize:
+#   endpoint: https://otlp.internal.company.com/v1/traces
+#   space_id: ${ARIZE_SPACE_ID}
+#   api_key: ${ARIZE_API_KEY}
+#   project_name: my-project
+#   certificate_file: /etc/ssl/certs/internal-ca.pem
+#   use_arize_otel: false  # Manual OTLP with custom TLS
+#
+# validation:
+#   mode: strict
+
+# -----------------------------------------------------------------------------
+# Example: Minimal Configuration
+# -----------------------------------------------------------------------------
+# service:
+#   name: my-app
+#
+# arize:
+#   endpoint: http://localhost:6006/v1/traces
+
+
+# =============================================================================
+# Environment Variables Reference
+# =============================================================================
+# The SDK reads these environment variables:
+#
+# | Variable                           | Used For                                    |
+# |------------------------------------|---------------------------------------------|
+# | LLMOPS_CONFIG_PATH                 | Default config file path if not passed      |
+# | ARIZE_SPACE_ID                     | Arize authentication                        |
+# | ARIZE_API_KEY                      | Arize authentication                        |
+# | ARIZE_ENDPOINT                     | OTLP endpoint URL                           |
+# | ARIZE_PROJECT_NAME                 | Project name in Arize                       |
+# | OTEL_EXPORTER_OTLP_CERTIFICATE     | Fallback for certificate_file               |
+# | OTEL_EXPORTER_OTLP_CLIENT_KEY      | Fallback for client_key_file                |
+# | OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE | Fallback for client_certificate_file     |
