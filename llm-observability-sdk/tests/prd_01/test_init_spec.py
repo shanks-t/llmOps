@@ -26,9 +26,6 @@ PRD_ID = "PRD_01"
 API_SPEC_ID = "API_SPEC_01"
 CAPABILITY = "init"
 
-# Mark all tests as xfail until implementation is complete
-pytestmark = pytest.mark.xfail(reason="PRD_01 implementation pending", strict=False)
-
 
 class TestInitConfigResolution:
     """Tests for config path resolution behavior."""

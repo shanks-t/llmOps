@@ -14,8 +14,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-import pytest
-
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -23,9 +21,6 @@ if TYPE_CHECKING:
 PRD_ID = "PRD_01"
 API_SPEC_ID = "API_SPEC_01"
 CAPABILITY = "auto_instrumentation"
-
-# Mark all tests as xfail until implementation is complete
-pytestmark = pytest.mark.xfail(reason="PRD_01 implementation pending", strict=False)
 
 
 class TestGoogleADKInstrumentation:
