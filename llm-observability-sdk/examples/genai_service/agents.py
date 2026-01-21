@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from google.adk import Agent, Runner
 from google.adk.sessions import InMemorySessionService
@@ -427,6 +428,109 @@ def analyze_text(text: str, analysis_type: str = "summary") -> dict:
 
 
 # =============================================================================
+# GCS TOOLS FOR MEDICAL RECORDS
+# =============================================================================
+
+
+def _run_gcloud(args: list[str]) -> str:
+    """Run a gcloud command and return output.
+
+    Args:
+        args: Command arguments (without 'gcloud').
+
+    Returns:
+        Command stdout.
+
+    Raises:
+        RuntimeError: If command fails.
+    """
+    import subprocess
+
+    from config import get_config
+
+    config = get_config()
+    cmd = ["gcloud"] + args + [f"--project={config.project_id}"]
+
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"gcloud command failed: {result.stderr}")
+    return result.stdout
+
+
+def list_patients() -> list[dict[str, Any]]:
+    """List all patients from the index.
+
+    Returns:
+        List of patient metadata dicts.
+    """
+    import json
+
+    from config import get_config
+
+    config = get_config()
+    output = _run_gcloud(["storage", "cat", config.index_uri])
+    result: list[dict[str, Any]] = json.loads(output)
+    return result
+
+
+def fetch_patient_record(patient_id: str) -> dict[str, Any]:
+    """Fetch a patient's FHIR record from GCS.
+
+    Args:
+        patient_id: The patient ID (e.g., "patient-001").
+
+    Returns:
+        The FHIR bundle as a dict.
+    """
+    import json
+
+    from config import get_config
+
+    config = get_config()
+    uri = f"{config.raw_uri}/{patient_id}.json"
+    output = _run_gcloud(["storage", "cat", uri])
+    result: dict[str, Any] = json.loads(output)
+    return result
+
+
+def save_summary(patient_id: str, summary: str, citations: list[dict]) -> dict:
+    """Save a patient summary to GCS.
+
+    Args:
+        patient_id: The patient ID (e.g., "patient-001").
+        summary: The summary text.
+        citations: List of citation objects with section, resource_type, resource_id, excerpt.
+
+    Returns:
+        Confirmation with GCS path.
+    """
+    import json
+    import tempfile
+
+    from config import get_config
+
+    config = get_config()
+    summary_data = {
+        "patient_id": patient_id,
+        "summary": summary,
+        "citations": citations,
+    }
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        json.dump(summary_data, f, indent=2)
+        temp_path = f.name
+
+    try:
+        dest_uri = f"{config.summaries_uri}/{patient_id}.json"
+        _run_gcloud(["storage", "cp", temp_path, dest_uri])
+        return {"status": "saved", "location": dest_uri}
+    finally:
+        import os
+
+        os.unlink(temp_path)
+
+
+# =============================================================================
 # AGENT DEFINITIONS
 # =============================================================================
 
@@ -501,6 +605,52 @@ research_agent = Agent(
 
     Be objective and cite your sources. Distinguish between facts and interpretations.""",
     tools=[search_knowledge_base, analyze_text],
+)
+
+medical_records_agent = Agent(
+    name="medical_records_assistant",
+    model="gemini-2.0-flash-exp",
+    description="A medical records summarization agent that creates clinical summaries with citations.",
+    instruction="""You are a clinical documentation specialist. Your task is to summarize patient
+medical records from FHIR bundles and provide citations for every clinical assertion.
+
+WORKFLOW:
+1. Use list_patients() to see available patients if needed
+2. Use fetch_patient_record(patient_id) to retrieve the FHIR bundle
+3. Analyze the bundle and create a structured summary
+4. Use save_summary(patient_id, summary, citations) to save your work
+
+REQUIRED SECTIONS in your summary:
+- Demographics: Patient name, age, gender, address
+- Active Conditions: Current diagnoses with onset dates
+- Procedures/Surgical History: Past procedures with dates
+- Current Medications: Active medication requests
+- Recent Lab Results: Flag any abnormal values with reference ranges
+- Imaging Findings: Diagnostic reports and imaging results
+
+CITATION REQUIREMENTS:
+Every clinical claim MUST include a citation object with:
+- section: Which summary section this supports
+- resource_type: FHIR resource type (Condition, Procedure, Observation, etc.)
+- resource_id: The resource ID from the bundle
+- excerpt: A brief excerpt from the source data
+
+OUTPUT FORMAT:
+Return ONLY a JSON object with this structure (no markdown, no code blocks, no additional text):
+{
+    "summary": "The clinical summary text with all required sections...",
+    "citations": [
+        {
+            "section": "Active Conditions",
+            "resource_type": "Condition",
+            "resource_id": "abc123",
+            "excerpt": "Essential hypertension (disorder), onset 2023-05-15"
+        }
+    ]
+}
+
+Be thorough but concise. Focus on clinically relevant information.""",
+    tools=[list_patients, fetch_patient_record, save_summary],
 )
 
 

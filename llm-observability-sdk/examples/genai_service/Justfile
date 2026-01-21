@@ -1,6 +1,10 @@
 # Justfile for GenAI Service
 # Run `just` to see available commands
 # Run `just --list` to see all recipes organized by group
+#
+# Note: For recipes with parameters, pass values positionally or use `:=` syntax:
+#   just summarize "patient-002"           # positional
+#   just summarize patient_id:="patient-002"  # named (use := not =)
 
 set dotenv-load := true
 
@@ -137,6 +141,37 @@ health:
 [group('examples')]
 info:
     curl -s http://localhost:8000/ | jq
+
+# =============================================================================
+# Medical Records Pipeline
+# =============================================================================
+
+# Upload Synthea data to GCS
+[group('data')]
+setup-data:
+    uv run python scripts/setup_data.py
+
+# Dry run: show what would be uploaded
+[group('data')]
+setup-data-dry-run:
+    uv run python scripts/setup_data.py --dry-run
+
+# List patients from GCS
+[group('examples')]
+patients:
+    curl -s http://localhost:8000/patients | jq
+
+# Summarize a patient record
+[group('examples')]
+summarize patient_id="patient-001":
+    curl -s -X POST http://localhost:8000/patients/{{patient_id}}/summarize \
+        -H "Content-Type: application/json" \
+        -d '{}' | jq
+
+# Get a patient summary
+[group('examples')]
+summary patient_id="patient-001":
+    curl -s http://localhost:8000/patients/{{patient_id}}/summary | jq
 
 # =============================================================================
 # Development Workflow

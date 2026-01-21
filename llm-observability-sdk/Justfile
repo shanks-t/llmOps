@@ -22,32 +22,32 @@ install:
 # Run Ruff linter
 [group('quality')]
 lint:
-    uv run ruff check src/ tests/
+    uv run ruff check tests/
 
 # Run Ruff formatter check
 [group('quality')]
 format-check:
-    uv run ruff format --check src/ tests/
+    uv run ruff format --check tests/
 
 # Run Ruff formatter (auto-fix)
 [group('quality')]
 format:
-    uv run ruff format src/ tests/
+    uv run ruff format tests/
 
 # Run MyPy type checker
 [group('quality')]
 typecheck:
-    uv run mypy src/
+    uv run mypy tests/
 
-# Run Bandit security scanner
+# Run Bandit security scanner (skip assert checks in tests)
 [group('quality')]
 security:
-    uv run bandit -r src/
+    uv run bandit -r tests/ -s B101
 
 # Run linter with auto-fix
 [group('quality')]
 lint-fix:
-    uv run ruff check --fix src/ tests/
+    uv run ruff check --fix tests/
 
 # =============================================================================
 # Testing
@@ -58,10 +58,10 @@ lint-fix:
 test:
     uv run pytest
 
-# Run unit tests only
+# Run contract tests (PRD-scoped behavioral tests)
 [group('test')]
 test-unit:
-    uv run pytest tests/test_configure.py -v
+    uv run pytest tests/prd_01/ -v
 
 # Run fast integration tests (no Docker required)
 [group('test')]

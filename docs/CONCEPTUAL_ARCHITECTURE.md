@@ -1,515 +1,139 @@
-# LLM Observability SDK — Conceptual Architecture
+# PRD_01 — Conceptual Architecture
 
-**Version:** 1.0
-**Date:** 2026-01-13
+**Version:** 0.1
+**Date:** 2026-01-21
 **Status:** Draft
 
 ---
 
 ## 1. Overview
 
-This document provides a visual understanding of the LLM Observability SDK architecture. It describes **what the system looks like** and **how pieces relate**, not implementation details.
+This document describes the high-level shape of the PRD_01 system. It focuses on concepts and relationships, not implementation details. The system provides a single-call setup for Arize telemetry in greenfield GenAI applications.
 
 ---
 
-## 2. Core Concept: Two Paths to Observability
+## 2. Core Concept
 
-The SDK provides two instrumentation modes that can be used independently or together:
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                        APPLICATION CODE                                  │
-│                                                                         │
-│  ┌─────────────────────────────┐    ┌─────────────────────────────────┐│
-│  │   AUTO-INSTRUMENTATION      │    │   MANUAL INSTRUMENTATION        ││
-│  │   (Quick Start)             │    │   (Fine-grained Control)        ││
-│  │                             │    │                                 ││
-│  │   import llmops             │    │   @llmops.llm(model="gpt-4o")  ││
-│  │   llmops.init()             │    │   async def generate(prompt):  ││
-│  │                             │    │       llmops.set_input(prompt) ││
-│  │   # That's it! LLM calls    │    │       ...                      ││
-│  │   # automatically traced    │    │       llmops.set_output(result)││
-│  │                             │    │       return result            ││
-│  └─────────────────────────────┘    └─────────────────────────────────┘│
-│                                                                         │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│                    ┌─────────────────────┐                             │
-│                    │   LLM OPS SDK       │  ← Stable API               │
-│                    │   (This Project)    │                             │
-│                    └──────────┬──────────┘                             │
-│                               │                                         │
-│              Translates to OTel GenAI conventions                       │
-│                               │                                         │
-│                    ┌──────────▼──────────┐                             │
-│                    │   OpenTelemetry     │  ← Industry Standard        │
-│                    │   (Unchanged)       │                             │
-│                    └──────────┬──────────┘                             │
-│                               │                                         │
-├───────────────────────────────┼─────────────────────────────────────────┤
-│                               │                                         │
-│         ┌─────────────────────┴─────────────────────┐                  │
-│         │                                           │                  │
-│         ▼                                           ▼                  │
-│   ┌──────────┐                               ┌──────────┐              │
-│   │  Arize   │                               │  MLflow  │              │
-│   │  Phoenix │                               │          │              │
-│   └──────────┘                               └──────────┘              │
-│                                                                         │
-│              PRIMARY BACKENDS (Auto-instrumentation)                    │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-**Key Insight:** The SDK provides a quick on-ramp via auto-instrumentation while preserving the option for fine-grained manual control.
-
----
-
-## 3. SDK Layer Model
+A single initialization call wires three concerns:
+- Configuration loading from an explicit `llmops.yaml`/`llmops.yml` path
+- Arize telemetry setup via OpenTelemetry
+- Auto-instrumentation for Google ADK and Google GenAI
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│  LAYER 5: Public API                                                    │
-│  ─────────────────────────────────────────────────────────────────────  │
-│  • Initialization: init()                                               │
-│  • Decorators: @llmops.llm(), @llmops.tool(), @llmops.agent()          │
-│  • Enrichment: set_input(), set_output(), set_tokens()                 │
-│                                                                         │
-│  STABILITY: ████████████████████████████████████████  STABLE           │
-├─────────────────────────────────────────────────────────────────────────┤
-│  LAYER 4: Auto-instrumentation                                          │
-│  ─────────────────────────────────────────────────────────────────────  │
-│  • Backend instrumentor orchestration                                   │
-│  • Phoenix: OpenInference instrumentors                                 │
-│  • MLflow: Native tracing instrumentors                                 │
-│                                                                         │
-│  STABILITY: ████████████████████████████████████████  STABLE           │
-├─────────────────────────────────────────────────────────────────────────┤
-│  LAYER 3: Semantic Model                                                │
-│  ─────────────────────────────────────────────────────────────────────  │
-│  • SemanticKind enum (LLM_GENERATE, TOOL_CALL, etc.)                   │
-│  • Span lifecycle management                                            │
-│  • Context propagation                                                  │
-│                                                                         │
-│  STABILITY: ████████████████████████░░░░░░░░░░░░░░░░  STABLE (contract)│
-├─────────────────────────────────────────────────────────────────────────┤
-│  LAYER 2: OTel GenAI Mapping                                            │
-│  ─────────────────────────────────────────────────────────────────────  │
-│  • Translates SemanticKind → gen_ai.* attributes                       │
-│  • Creates OTel spans and events                                        │
-│  • Maps to OTel SpanKind (CLIENT, INTERNAL)                            │
-│                                                                         │
-│  STABILITY: ████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  INTERNAL        │
-├─────────────────────────────────────────────────────────────────────────┤
-│  LAYER 1: Backend Adapters                                              │
-│  ─────────────────────────────────────────────────────────────────────  │
-│  • OTLPAdapter (pass-through)                                           │
-│  • MLflowAdapter (pass-through)                                         │
-│  • ArizeAdapter (OpenInference translation)                             │
-│                                                                         │
-│  STABILITY: ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  MAINTAINED       │
-├─────────────────────────────────────────────────────────────────────────┤
-│  LAYER 0: OpenTelemetry Foundation                                      │
-│  ─────────────────────────────────────────────────────────────────────  │
-│  • TracerProvider, Spans, Context                                       │
-│  • Exporters (OTLP gRPC/HTTP)                                          │
-│  • NOT modified by this SDK                                             │
-│                                                                         │
-│  STABILITY: ████████████████████████████████████████  EXTERNAL         │
-└─────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                         APPLICATION CODE                              │
+│                                                                      │
+│  import llmops                                                       │
+│  llmops.init()  ──────────────────────────────────────────────────┐  │
+│                                                                  │  │
+│  # Google ADK + Google GenAI calls are auto-traced                │  │
+│                                                                  │  │
+└──────────────────────────────────────────────────────────────────────┘
+                                                                  │
+                                                                  ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                         LLMOPS SDK                                   │
+│                                                                      │
+│  ┌──────────────┐   ┌──────────────────┐   ┌──────────────────────┐  │
+│  │ Config Loader│──▶│ Arize Telemetry  │──▶│ Instrumentor Runner  │  │
+│  │ (path+env)   │   │ (OTel provider)  │   │ (ADK + GenAI)         │  │
+│  └──────────────┘   └──────────────────┘   └──────────────────────┘  │
+│                                                                      │
+└──────────────────────────────────────────────────────────────────────┘
+                                                                  │
+                                                                  ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                         ARIZE BACKEND                                │
+│                                                                      │
+│  Phoenix / Arize AX receives GenAI spans                              │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 4. Data Flow
-
-### 4.1 Auto-Instrumentation Flow (Quick Start)
+## 3. Primary Flow (Auto-Instrumentation)
 
 ```
-    Application startup              SDK initializes            Backend receives
-    ───────────────────              ──────────────            ─────────────────
-
-    import llmops
-    llmops.init()
-            │
-            ▼
-    ┌───────────────────┐     ┌───────────────────┐
-    │ Load config from  │────▶│ Detect backend    │
-    │ llmops.yaml       │     │ (phoenix/mlflow)  │
-    └───────────────────┘     └────────┬──────────┘
-                                       │
-                                       ▼
-                              ┌───────────────────┐
-                              │ Initialize OTel   │
-                              │ TracerProvider    │
-                              └────────┬──────────┘
-                                       │
-            ┌──────────────────────────┴──────────────────────────┐
-            │ Phoenix                                   MLflow   │
-            ▼                                                    ▼
-    ┌───────────────────┐                          ┌───────────────────┐
-    │ OpenInference     │                          │ MLflow tracing    │
-    │ instrumentors     │                          │ auto-instrument   │
-    │ (OpenAI, etc.)    │                          │ (OpenAI, etc.)    │
-    └────────┬──────────┘                          └────────┬──────────┘
-             │                                              │
-             └──────────────────────┬───────────────────────┘
-                                    │
-                                    ▼
-    ┌───────────────────────────────────────────────────────────────────────┐
-    │  APPLICATION CODE (no changes needed!)                                 │
-    │                                                                        │
-    │    response = openai.chat.completions.create(...)  ◀── Auto-traced   │
-    │    result = anthropic.messages.create(...)         ◀── Auto-traced   │
-    │    chain.invoke(...)                               ◀── Auto-traced   │
-    │                                                                        │
-    └───────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-                            ┌──────────────┐
-                            │ Spans sent   │
-                            │ to backend   │
-                            └──────────────┘
+Application startup
+        │
+        ▼
+  llmops.init()
+        │
+        ▼
+  Load config (explicit path via init or env var)
+        │
+        ▼
+  Initialize Arize telemetry (TracerProvider + exporter)
+        │
+        ▼
+  Instrument Google ADK + Google GenAI
+        │
+        ▼
+  GenAI spans exported to Arize
 ```
 
-### 4.2 Manual Instrumentation Flow (Fine-grained Control)
+---
+
+## 4. Configuration Flow
 
 ```
-    Developer writes code          SDK processes              Backend receives
-    ──────────────────────        ──────────────            ─────────────────
-
-    @llmops.llm(model="gpt-4o")
-    async def generate(prompt):
-            │
-            ▼
-    ┌───────────────────┐
-    │ Decorator creates │
-    │ semantic span     │───────────────────────────────────────┐
-    └───────────────────┘                                       │
-            │                                                   │
-            ▼                                                   │
-    llmops.set_input(prompt)                                   │
-            │                                                   │
-            ▼                                                   │
-    ┌───────────────────┐                                       │
-    │ Enrichment call   │                                       │
-    │ attaches to span  │───────────────────────────────────────┤
-    └───────────────────┘                                       │
-            │                                                   │
-            ▼                                                   │
-    response = await openai...                                  │
-            │                                                   │
-            ▼                                                   │
-    llmops.set_output(result)                                  │
-    llmops.set_tokens(...)                                     │
-            │                                                   │
-            ▼                                                   │
-    ┌───────────────────┐     ┌───────────────────┐     ┌──────▼────────┐
-    │ Function returns  │────▶│ Span closes       │────▶│ Span exported │
-    │                   │     │ OTel attributes   │     │ to backend    │
-    └───────────────────┘     └───────────────────┘     └───────────────┘
-```
-
-### 4.3 Configuration Flow
-
-```
-    ┌──────────────────┐
-    │  YAML Config     │
-    │  (llmops.yaml)   │
-    └────────┬─────────┘
-             │
-             ▼
-    ┌──────────────────┐     ┌──────────────────┐
-    │  Environment     │────▶│  Configuration   │
-    │  Variables       │     │  Loader          │
-    └──────────────────┘     └────────┬─────────┘
+┌──────────────────┐     ┌─────────────────────────┐
+│ config path arg  │────▶│ Config Loader           │
+└──────────────────┘     │ - validates fields      │
+                         │ - applies defaults      │
+┌──────────────────┐     │ - merges env overrides  │
+│ LLMOPS_CONFIG    │────▶│                         │
+└──────────────────┘     └─────────────┬──────────┘
                                       │
-             ┌────────────────────────┼────────────────────────┐
-             │                        │                        │
-             ▼                        ▼                        ▼
-    ┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
-    │  Service Info    │     │  Backend         │     │  Privacy         │
-    │  (name, version) │     │  Adapters        │     │  Settings        │
-    └──────────────────┘     └──────────────────┘     └──────────────────┘
+                                      ▼
+                            ┌─────────────────────┐
+                            │ Init Configuration  │
+                            └─────────────────────┘
 ```
 
 ---
 
-## 5. Separation of Concerns
+## 5. Key Invariants
 
-### 5.1 The Two-Part Contract
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                                                                         │
-│     DECORATOR                              SDK CALLS                    │
-│     ─────────                              ─────────                    │
-│                                                                         │
-│     "What kind of                          "What data should            │
-│      operation is this?"                    be captured?"               │
-│                                                                         │
-│     ┌─────────────────┐                    ┌─────────────────┐         │
-│     │  @llmops.llm()  │                    │  set_input()    │         │
-│     │  @llmops.tool() │                    │  set_output()   │         │
-│     │  @llmops.agent()│                    │  set_tokens()   │         │
-│     └─────────────────┘                    │  emit_chunk()   │         │
-│                                            └─────────────────┘         │
-│           │                                        │                   │
-│           │                                        │                   │
-│           ▼                                        ▼                   │
-│     ┌─────────────────────────────────────────────────────────┐       │
-│     │                      SPAN                                │       │
-│     │                                                          │       │
-│     │   kind: LLM_GENERATE                                    │       │
-│     │   name: "generate"                                       │       │
-│     │   model: "gpt-4o"          ◀── from decorator           │       │
-│     │   ─────────────────────────────────────────────         │       │
-│     │   input: "What is..."      ◀── from set_input()         │       │
-│     │   output: "The answer..."  ◀── from set_output()        │       │
-│     │   tokens.input: 15         ◀── from set_tokens()        │       │
-│     │   tokens.output: 42                                      │       │
-│     │                                                          │       │
-│     └─────────────────────────────────────────────────────────┘       │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-### 5.2 Why This Separation?
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│  PROBLEM: All-in-decorator approach                                     │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  @observe.llm(                                                          │
-│      model="gpt-4o",                                                    │
-│      input=lambda args, kwargs: kwargs["prompt"],    ◀── Complex       │
-│      output=lambda r: r.choices[0].message.content,  ◀── Hard to test  │
-│      tokens=lambda r: {...}                          ◀── Fixed timing  │
-│  )                                                                      │
-│  async def generate(prompt): ...                                        │
-│                                                                         │
-│  Issues:                                                                │
-│  • Extraction happens at fixed points (before/after)                   │
-│  • Streaming requires awkward workarounds                              │
-│  • Lambda extractors hard to test in isolation                         │
-│  • Decorator signature becomes complex                                  │
-│                                                                         │
-├─────────────────────────────────────────────────────────────────────────┤
-│  SOLUTION: Decorator + explicit calls                                   │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  @llmops.llm(model="gpt-4o")      ◀── Simple, static                   │
-│  async def generate(prompt):                                            │
-│      llmops.set_input(prompt)     ◀── Explicit, testable               │
-│                                                                         │
-│      async for chunk in stream:                                         │
-│          llmops.emit_chunk(chunk) ◀── Works during iteration!          │
-│          yield chunk                                                    │
-│                                                                         │
-│      llmops.set_output(full)      ◀── Call whenever ready              │
-│                                                                         │
-│  Benefits:                                                              │
-│  • Enrichment at any point in execution                                │
-│  • Streaming handled naturally                                          │
-│  • SDK calls easily mocked in tests                                    │
-│  • Decorators remain simple                                             │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-### 5.3 Auto vs Manual: When to Use Which
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                     INSTRUMENTATION DECISION TREE                        │
-│                                                                         │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  "I want traces with zero code changes"                         │   │
-│  │                      │                                          │   │
-│  │                      ▼                                          │   │
-│  │            AUTO-INSTRUMENTATION                                 │   │
-│  │            llmops.init() + config file                          │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  "I need custom business attributes on spans"                   │   │
-│  │  "I need to trace functions that aren't LLM calls"             │   │
-│  │  "I need fine-grained control over span boundaries"            │   │
-│  │                      │                                          │   │
-│  │                      ▼                                          │   │
-│  │            MANUAL INSTRUMENTATION                               │   │
-│  │            @llmops.* decorators + enrichment calls              │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  "I want automatic traces PLUS custom spans for my logic"      │   │
-│  │                      │                                          │   │
-│  │                      ▼                                          │   │
-│  │            BOTH (they coexist!)                                 │   │
-│  │            llmops.init() + @llmops.* where needed               │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-**Coexistence Example:**
-
-```python
-import llmops
-
-# Enable auto-instrumentation for all LLM library calls
-llmops.init()
-
-# Add manual instrumentation for custom business logic
-@llmops.agent(name="research-agent")
-async def research(query: str):
-    llmops.set_attribute("query.topic", extract_topic(query))
-
-    # These OpenAI calls are auto-traced by init()
-    # AND nested under the manual "research-agent" span
-    plan = await openai.chat.completions.create(...)
-    results = await openai.chat.completions.create(...)
-
-    llmops.set_output(results)
-    return results
-```
+- Telemetry never breaks business logic.
+- `init()` is a single synchronous call.
+- Only single-backend greenfield setups are supported.
+- All configuration is file-first with explicit path selection.
+- Config validation supports strict and permissive modes.
 
 ---
 
-## 6. Span Hierarchy
+## 6. Separation of Responsibilities
 
-### 6.1 Automatic Nesting
-
-```
-    @llmops.agent(name="research")
-    async def research(query):
-        │
-        │   @llmops.retrieve(name="search")
-        ├──▶ async def search(q): ...
-        │           │
-        │           │   @llmops.llm(model="gpt-4o")
-        │           └──▶ async def generate(prompt): ...
-        │
-        │   @llmops.tool(name="summarize")
-        └──▶ async def summarize(docs): ...
-
-
-    RESULTING TRACE:
-
-    ┌─────────────────────────────────────────────────────────────────┐
-    │  agent: research                                                │
-    │  ┌────────────────────────────────────────────────────────────┐ │
-    │  │  retrieve: search                                          │ │
-    │  │  ┌───────────────────────────────────────────────────────┐ │ │
-    │  │  │  llm: generate                                        │ │ │
-    │  │  └───────────────────────────────────────────────────────┘ │ │
-    │  └────────────────────────────────────────────────────────────┘ │
-    │  ┌────────────────────────────────────────────────────────────┐ │
-    │  │  tool: summarize                                           │ │
-    │  └────────────────────────────────────────────────────────────┘ │
-    └─────────────────────────────────────────────────────────────────┘
-             time ───────────────────────────────────────────────▶
-```
+- **Application code**: calls `init()` and runs business logic.
+- **Config loader**: resolves file + env settings into a validated config.
+- **Telemetry setup**: creates the tracer provider and exporter for Arize.
+- **Instrumentor runner**: wires Google ADK + Google GenAI auto-instrumentation.
 
 ---
 
-## 7. Backend Translation
+## 7. Extension Points (Conceptual)
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           SDK Internal                                  │
-│                                                                         │
-│   SemanticKind.LLM_GENERATE                                            │
-│   ├── model: "gpt-4o"                                                  │
-│   ├── input: "What is..."                                              │
-│   ├── output: "The answer..."                                          │
-│   └── tokens: {input: 15, output: 42}                                  │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    │ OTel GenAI Mapping
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         OTel GenAI Span                                 │
-│                                                                         │
-│   gen_ai.operation.name: "chat"                                        │
-│   gen_ai.request.model: "gpt-4o"                                       │
-│   gen_ai.usage.input_tokens: 15                                        │
-│   gen_ai.usage.output_tokens: 42                                       │
-│   + events for input/output content                                    │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
-          │                         │                         │
-          │ OTLP Adapter           │ MLflow Adapter          │ Arize Adapter
-          │ (pass-through)         │ (pass-through)          │ (translate)
-          ▼                         ▼                         ▼
-┌─────────────────┐       ┌─────────────────┐       ┌─────────────────┐
-│     Tempo       │       │     MLflow      │       │  Arize Phoenix  │
-│                 │       │                 │       │                 │
-│  gen_ai.*       │       │  gen_ai.*       │       │  llm.model_name │
-│  (unchanged)    │       │  (unchanged)    │       │  llm.token_count│
-│                 │       │                 │       │  (OpenInference)│
-└─────────────────┘       └─────────────────┘       └─────────────────┘
+Instrumentor Registry
+├── Google ADK (enabled by default)
+├── Google GenAI (enabled by default)
+└── OpenAI (future)
 ```
+
+The registry is a conceptual map of supported instrumentors; the public API does not change when new instrumentors are added.
 
 ---
 
-## 8. Design Rationale
-
-### Why Both Auto and Manual Instrumentation?
-
-| User Need | Solution |
-|-----------|----------|
-| Quick start with zero code changes | Auto-instrumentation via `init()` |
-| Fine-grained control and custom attributes | Manual instrumentation via decorators |
-| Both baseline traces and custom business logic | Use both together |
-
-**Key insight:** Different users have different needs. New teams want instant visibility. Mature teams want customization. The SDK supports both without forcing a choice.
-
-### Why Leverage Backend Instrumentors?
-
-| Alternative | Why Not |
-|-------------|---------|
-| Build custom instrumentors | Duplicates effort; falls behind library updates |
-| Only manual instrumentation | High friction; adoption barrier |
-| **Use backend instrumentors** | ✓ Battle-tested, maintained, comprehensive coverage |
-
-### Why Decorators (for Manual)?
-
-| Alternative | Why Not |
-|-------------|---------|
-| Context managers only | Requires `with` block everywhere; less ergonomic |
-| Explicit span start/end | Easy to forget `end()`; error-prone |
-| Monkey-patching | Magic behavior; hard to debug |
-| **Decorators** | ✓ Clean syntax, explicit boundaries, Pythonic |
-
-### Why Explicit Enrichment Calls?
-
-| Alternative | Why Not |
-|-------------|---------|
-| Auto-extract from args | Requires inference; breaks on refactoring |
-| Extraction lambdas in decorator | Hard to test; fixed execution points |
-| **Explicit SDK calls** | ✓ Clear, testable, works with streaming |
-
-### Why Enums for Semantic Kinds?
-
-| Alternative | Why Not |
-|-------------|---------|
-| String literals | Typos at runtime; no autocomplete |
-| Class constants | No exhaustiveness checking |
-| **Enums** | ✓ Type-safe, discoverable, IDE autocomplete |
-
----
-
-## 9. Related Documents
+## 8. Related Documents
 
 | Document | Purpose |
 |----------|---------|
-| [PRD](./PRD.md) | Requirements and success criteria |
-| [Reference Architecture](./REFERENCE_ARCHITECTURE.md) | Technical patterns and invariants |
-| API Specification | Detailed contracts and signatures |
+| `docs/PRD_01.md` | Requirements and success criteria |
+| Reference Architecture (next) | Architectural patterns and invariants |
+| API Specification (next) | Public interfaces and configuration contracts |
 
 ---
 
 **Document Owner:** Platform Team
-**Last Updated:** 2026-01-13
+**Last Updated:** 2026-01-21

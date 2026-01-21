@@ -6,7 +6,14 @@ readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.12"
 authors = [{ name = "Platform Team" }]
-keywords = ["llm", "observability", "tracing", "opentelemetry", "phoenix", "mlflow"]
+keywords = [
+    "llm",
+    "observability",
+    "tracing",
+    "opentelemetry",
+    "phoenix",
+    "mlflow",
+]
 
 dependencies = [
     "opentelemetry-api>=1.30.0",
@@ -21,7 +28,7 @@ phoenix = [
     "openinference-instrumentation-google-genai>=0.1.9",
 ]
 mlflow = [
-    "mlflow>=3.6.0",  # Required for OTLP ingestion support
+    "mlflow>=3.6.0", # Required for OTLP ingestion support
 ]
 test = [
     "fastapi>=0.115.0",
@@ -32,9 +39,7 @@ test = [
     "pytest-mock>=3.14.0",
     "httpx>=0.27.0",
 ]
-all = [
-    "llmops[phoenix,mlflow,test]",
-]
+all = ["llmops[phoenix,mlflow,test]"]
 
 [build-system]
 requires = ["hatchling"]
@@ -57,9 +62,4 @@ warn_unused_configs = true
 ignore_missing_imports = true
 
 [dependency-groups]
-dev = [
-    "bandit>=1.9.2",
-    "mypy>=1.19.1",
-    "ruff>=0.14.11",
-    "types-PyYAML>=6.0.0",
-]
+dev = ["bandit>=1.9.2", "mypy>=1.19.1", "ruff>=0.14.11", "types-PyYAML>=6.0.0"]

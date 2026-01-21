@@ -3,18 +3,19 @@ observability.py
 
 OpenTelemetry initialization for FastAPI service with dual-backend architecture:
 - Standard infrastructure traces → Jaeger (or any OTLP-compatible backend)
-- GenAI traces (OpenInference) → Arize
+- GenAI traces (OpenInference) → Phoenix (open source) or Arize AX (enterprise)
 
 Environment Variables:
     SERVICE_NAME          - Service name for traces (default: "genai-service")
     DEPLOYMENT_ENV        - Environment (default: "local")
     OTEL_ENABLED          - Enable OTLP export to Jaeger (default: "true")
     OTEL_ENDPOINT         - OTLP HTTP endpoint (default: "http://localhost:4318/v1/traces")
-    ARIZE_ENABLED         - Enable Arize GenAI export (default: "true")
-    ARIZE_API_KEY         - Arize API key (required if ARIZE_ENABLED)
-    ARIZE_SPACE_ID        - Arize space ID (required if ARIZE_ENABLED)
-    ARIZE_PROJECT_NAME    - Arize project name (default: "genai-service")
     OTEL_CONSOLE_DEBUG    - Enable console span exporter for debugging (default: "false")
+
+    ARIZE_MODE            - GenAI trace backend: "phoenix", "ax", or "disabled" (default: "disabled")
+    ARIZE_ENDPOINT        - Endpoint URL (required for phoenix and ax modes)
+    ARIZE_API_KEY         - API key (required for ax mode only)
+    ARIZE_SPACE_ID        - Space ID (required for ax mode only)
 """
 
 from __future__ import annotations
@@ -76,7 +77,7 @@ def setup_opentelemetry() -> TracerProvider:
     Configures:
     - Console exporter for debugging (if OTEL_CONSOLE_DEBUG=true)
     - OTLP exporter for infrastructure traces to Jaeger (if OTEL_ENABLED=true)
-    - Arize exporter for GenAI traces only (if ARIZE_ENABLED=true)
+    - Phoenix/Arize AX exporter for GenAI traces only (based on ARIZE_MODE)
     - Google ADK instrumentation for GenAI semantic spans
 
     Returns:
@@ -89,7 +90,7 @@ def setup_opentelemetry() -> TracerProvider:
     deployment_env = os.getenv("DEPLOYMENT_ENV", "local")
     otel_enabled = _get_bool_env("OTEL_ENABLED", default=True)
     otel_endpoint = os.getenv("OTEL_ENDPOINT", "http://localhost:4318/v1/traces")
-    arize_enabled = _get_bool_env("ARIZE_ENABLED", default=True)
+    arize_mode = os.getenv("ARIZE_MODE", "disabled").lower()
     console_debug = _get_bool_env("OTEL_CONSOLE_DEBUG", default=False)
 
     # ------------------------------------
@@ -132,36 +133,64 @@ def setup_opentelemetry() -> TracerProvider:
         print(f"[observability] OTLP exporter enabled → {otel_endpoint}")
 
     # ------------------------------------
-    # Arize exporter
+    # Phoenix / Arize AX exporter
     # (ONLY GenAI spans go here)
     # ------------------------------------
-    if arize_enabled:
+    if arize_mode == "phoenix":
+        arize_endpoint = os.getenv("ARIZE_ENDPOINT")
+        if not arize_endpoint:
+            print(
+                "[observability] WARNING: ARIZE_MODE=phoenix but ARIZE_ENDPOINT not set. "
+                "Skipping Phoenix exporter."
+            )
+        else:
+            from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+                OTLPSpanExporter as PhoenixOTLPExporter,
+            )
+
+            phoenix_exporter = PhoenixOTLPExporter(endpoint=arize_endpoint)
+            phoenix_batch_processor = BatchSpanProcessor(phoenix_exporter)
+
+            # Wrap with filter to only send GenAI spans
+            phoenix_filtered_processor = OpenInferenceOnlySpanProcessor(phoenix_batch_processor)
+            tracer_provider.add_span_processor(phoenix_filtered_processor)
+            print(f"[observability] Phoenix exporter enabled (GenAI spans only) -> {arize_endpoint}")
+
+    elif arize_mode == "ax":
+        arize_endpoint = os.getenv("ARIZE_ENDPOINT")
         arize_api_key = os.getenv("ARIZE_API_KEY")
         arize_space_id = os.getenv("ARIZE_SPACE_ID")
 
-        if not arize_api_key or not arize_space_id:
+        if not all([arize_endpoint, arize_api_key, arize_space_id]):
             print(
-                "[observability] WARNING: ARIZE_ENABLED=true but "
-                "ARIZE_API_KEY or ARIZE_SPACE_ID not set. Skipping Arize exporter."
+                "[observability] WARNING: ARIZE_MODE=ax requires ARIZE_ENDPOINT, "
+                "ARIZE_API_KEY, and ARIZE_SPACE_ID. Skipping Arize AX exporter."
             )
         else:
             from arize.otel import HTTPSpanExporter
 
-            arize_project_name = os.getenv("ARIZE_PROJECT_NAME", service_name)
+            # Type narrowing: at this point we know these are not None
+            assert arize_endpoint is not None
+            assert arize_api_key is not None
+            assert arize_space_id is not None
 
-            arize_exporter = HTTPSpanExporter(
-                space_id=arize_space_id,
+            ax_exporter = HTTPSpanExporter(
+                endpoint=arize_endpoint,
                 api_key=arize_api_key,
-                project_name=arize_project_name,
+                space_id=arize_space_id,
             )
-            arize_batch_processor = BatchSpanProcessor(arize_exporter)
+            ax_batch_processor = BatchSpanProcessor(ax_exporter)
 
             # Wrap with filter to only send GenAI spans
-            arize_filtered_processor = OpenInferenceOnlySpanProcessor(arize_batch_processor)
-            tracer_provider.add_span_processor(arize_filtered_processor)
-            print(
-                f"[observability] Arize exporter enabled (GenAI spans only) → {arize_project_name}"
-            )
+            ax_filtered_processor = OpenInferenceOnlySpanProcessor(ax_batch_processor)
+            tracer_provider.add_span_processor(ax_filtered_processor)
+            print(f"[observability] Arize AX exporter enabled (GenAI spans only) -> {arize_endpoint}")
+
+    elif arize_mode == "disabled":
+        print("[observability] Phoenix/Arize disabled")
+
+    else:
+        print(f"[observability] WARNING: Unknown ARIZE_MODE '{arize_mode}', skipping")
 
     # ------------------------------------
     # Google ADK instrumentation
@@ -175,7 +204,7 @@ def setup_opentelemetry() -> TracerProvider:
 
     print(
         f"[observability] Initialized: service={service_name}, "
-        f"env={deployment_env}, otel={otel_enabled}, arize={arize_enabled}"
+        f"env={deployment_env}, otel={otel_enabled}, arize_mode={arize_mode}"
     )
 
     return tracer_provider

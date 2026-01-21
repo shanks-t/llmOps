@@ -93,7 +93,197 @@ If the API feels awkward in examples, the API is wrong.
 
 ---
 
-### 5. Implementation
+### 5. Tests (Executable Contracts)
+
+**Executable behavior defines correctness.**
+
+Tests are the **first executable artifact** derived from the PRD and API specification. They serve as contracts that must be satisfied before any implementation is considered complete.
+
+#### Core Philosophy
+
+We adopt **BDD semantics using pytest primitives**:
+
+- Tests are executable contracts
+- Behavior lives in structure, naming, and docstrings
+- pytest is the only required test dependency
+- Traceability is enforced by layout and metadata
+- Agents reason over tests as specs
+
+Think of this as: **"Structured pytest as executable design."**
+
+#### Directory Structure
+
+```
+llm-observability-sdk/tests/
+├── prd_01/
+│   ├── README.md                       # Coverage map for PRD_01
+│   ├── test_init_spec.py               # Init capability
+│   ├── test_validation_spec.py         # Validation modes
+│   └── ...
+├── prd_02/
+│   └── ...
+└── conftest.py                         # Shared fixtures
+```
+
+#### Traceability Mechanisms
+
+**1. Directory-level binding (hard guarantee)**
+
+```
+tests/prd_01/
+```
+
+- Impossible to miss PRD association
+- Impossible to mix PRDs accidentally
+- Easy to delete/regenerate wholesale
+
+**2. File-level binding (capability mapping)**
+
+Each `tests/prd_XX/README.md` provides a navigation index:
+
+```markdown
+# PRD_01 — Behavioral Test Coverage
+
+This directory contains executable contracts derived from:
+
+- PRD: docs/prd/PRD_01.md
+- API Spec: docs/api_spec/API_SPEC_01.md
+
+## Coverage Map
+
+| Capability | Test File | API Methods |
+|------------|-----------|-------------|
+| SDK initialization | test_init_spec.py | `init()` |
+| Config validation | test_validation_spec.py | `init()` |
+```
+
+**3. Test file metadata (agent-readable)**
+
+Each test file declares its scope:
+
+```python
+PRD_ID = "PRD_01"
+API_SPEC_ID = "API_SPEC_01"
+CAPABILITY = "init"
+```
+
+Agents can scan these constants to confirm scope and avoid leaking logic across PRDs.
+
+**4. Test function naming (scenario as name)**
+
+```python
+def test_init_fails_without_config_in_strict_mode():
+```
+
+Names communicate intent, not mechanics.
+
+**5. Docstrings (GIVEN/WHEN/THEN + metadata)**
+
+```python
+def test_init_resolves_config_from_env_var():
+    """
+    PRD: PRD_01
+    API: API_SPEC_01.init()
+
+    GIVEN a valid config file exists
+    AND the LLMOPS_CONFIG_PATH environment variable is set to that path
+    WHEN llmops.init() is called without arguments
+    THEN a TracerProvider is returned
+    """
+```
+
+This is machine-readable by agents and humans.
+
+#### Coverage Requirements
+
+- Every public API capability **must** have at least one contract test file
+- Test files **must** be traceable to both a PRD and an API spec
+- Test directories are versioned by PRD (naming: `prd_XX/`)
+- Implementations **must** satisfy all contract tests before merging
+
+#### Pre-Implementation Tests
+
+Tests written before implementation use `xfail`:
+
+```python
+pytestmark = pytest.mark.xfail(reason="PRD_01 implementation pending", strict=False)
+```
+
+- Tests run and validate structure (imports, fixtures)
+- Failures are expected and labeled `XFAIL`
+- When implementation lands, tests show `XPASS`
+- Remove the marker once implementation is complete
+
+#### Principles
+
+- Tests validate the contract **before** implementation
+- Tests remain readable by non-authors
+- Contract coverage reflects requirements in the PRD
+- Test scenarios describe **what** must happen, not **how**
+
+---
+
+### Executable Contracts as Design Artifacts
+
+Contract tests are treated as **design-level artifacts**, not test helpers.
+
+#### Role in the System
+
+Contract tests serve as:
+- The **executable form** of the API contract
+- The **primary input** for agentic implementation
+- A **stability layer** across refactors and regenerations
+
+> If code is deleted, regenerated, or refactored — **behavior survives**.
+
+#### One-Way Dependency
+
+```
+PRD → API Spec → Tests → Code
+```
+
+Tests define behavior. Code satisfies tests. Not the reverse.
+
+#### Agent Responsibilities
+
+Agents must:
+- Use tests under `tests/prd_XX/` as the source of behavioral truth
+- Generate implementations that satisfy contract tests
+- Flag ambiguous or underspecified behavior in tests
+- Propose PRD or API spec changes when behavior intent is unclear
+- Treat passing tests as the definition of "done"
+- **Not change tests** unless the PRD or API spec is updated
+
+**Recommended agent prompt:**
+
+```
+You are implementing functionality for PRD_01.
+Use the tests under llm-observability-sdk/tests/prd_01/ as the source of behavioral truth.
+Do not change tests unless the PRD or API spec is updated.
+```
+
+#### Human Responsibilities
+
+Humans must:
+- Keep test names precise and domain-aligned
+- Avoid encoding implementation details in tests
+- Update tests when requirements change (before updating code)
+- Review contract tests as critically as API designs
+
+#### Lifecycle
+
+```
+PRD change → API spec update → Contract test update → Implementation change
+```
+
+Contract tests must be updated **before** implementation changes when requirements evolve. This ensures:
+- Behavior intent is captured first
+- Agents have stable inputs
+- Regressions are caught immediately
+
+---
+
+### 6. Implementation
 
 **Small, reversible steps.**
 

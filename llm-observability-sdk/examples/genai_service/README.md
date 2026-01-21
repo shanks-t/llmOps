@@ -44,10 +44,13 @@ A FastAPI service demonstrating Google ADK agents with dual-backend OpenTelemetr
 genai_service/
 ├── main.py           # FastAPI app, lifespan, routes
 ├── agents.py         # Agent definitions, tools, runner utilities
+├── config.py         # GCS configuration for medical records
 ├── observability.py  # OpenTelemetry setup with dual exporters
 ├── pyproject.toml    # Dependencies (uv-managed)
 ├── Justfile          # Task runner commands
 ├── .env.example      # Environment variable template
+├── scripts/
+│   └── setup_data.py # Upload Synthea data to GCS
 └── synthea_output/   # Generated FHIR patient data (local)
 ```
 
@@ -68,9 +71,29 @@ The service uses a **dual-backend** tracing architecture:
 | Backend | Receives | Purpose |
 |---------|----------|---------|
 | **Jaeger** (OTLP) | All spans | Infrastructure observability |
-| **Arize** (OpenInference) | GenAI spans only | LLM-specific monitoring |
+| **Phoenix** (open source) or **Arize AX** (enterprise) | GenAI spans only | LLM-specific monitoring |
 
 GenAI spans are identified by the `openinference.span.kind` attribute and filtered using a custom `OpenInferenceOnlySpanProcessor`.
+
+### GenAI Trace Backend Modes
+
+Configure via `ARIZE_MODE`:
+
+- **`phoenix`** - Open source Phoenix (no auth required)
+  ```bash
+  ARIZE_MODE=phoenix
+  ARIZE_ENDPOINT=http://localhost:6006/v1/traces
+  ```
+
+- **`ax`** - Arize AX enterprise (requires auth)
+  ```bash
+  ARIZE_MODE=ax
+  ARIZE_ENDPOINT=https://your-ax-cluster.example.com/v1
+  ARIZE_API_KEY=your-api-key
+  ARIZE_SPACE_ID=your-space-id
+  ```
+
+- **`disabled`** - No GenAI trace export (default)
 
 ### Trace Structure
 
@@ -109,20 +132,60 @@ just chat "What is 2+2?"
 | `/code` | POST | Code generation/explanation/review |
 | `/research` | POST | RAG workflow with search + analyze |
 | `/stream` | GET | Server-Sent Events streaming |
+| `/patients` | GET | List available patients |
+| `/patients/{id}/summarize` | POST | Summarize patient record |
+| `/patients/{id}/summary` | GET | Get patient summary |
 | `/health` | GET | Health check |
 
-## Medical Records Feature (In Progress)
+## Medical Records Pipeline
 
-A patient record summarization pipeline using synthetic FHIR data.
+A patient record summarization pipeline using synthetic FHIR data stored in GCS.
+
+### Prerequisites
+
+- `gcloud` CLI installed and authenticated
+- GCS bucket created (default: `patient-records-genai`)
+- Synthea FHIR data generated locally
 
 ### Data Flow
 
 ```
 gs://patient-records-genai/
+├── index.json              # Patient index (id, name, age, gender)
 ├── raw/                    ──▶  GenAI Agent  ──▶  summaries/
 │   └── patient-XXX.json         (retrieve,        └── patient-XXX.json
 │       (FHIR bundles)            summarize,           (summary + citations)
 │                                 cite)
+```
+
+### Setup Data
+
+Upload local Synthea data to GCS:
+
+```bash
+# Preview what will be uploaded
+just setup-data-dry-run
+
+# Upload to GCS
+just setup-data
+```
+
+This will:
+1. Read FHIR bundles from `synthea_output/fhir/`
+2. Create `index.json` with patient metadata
+3. Upload to `gs://<bucket>/raw/` and `gs://<bucket>/index.json`
+
+### Usage
+
+```bash
+# List patients
+just patients
+
+# Summarize a patient record
+just summarize patient_id="patient-001"
+
+# Get existing summary
+just summary patient_id="patient-001"
 ```
 
 ### Available Patient Data
@@ -145,13 +208,6 @@ gcloud storage cat gs://patient-records-genai/index.json
 gcloud storage cat gs://patient-records-genai/raw/patient-001.json | head -100
 ```
 
-### Next Steps
-
-1. **Add GCS tools** to `agents.py` (`fetch_patient_record`, `save_summary`)
-2. **Create `medical_records_agent`** with summarization + citation instructions
-3. **Add endpoints** (`POST /patients/{id}/summarize`, `GET /patients/{id}/summary`)
-4. **Test pipeline** end-to-end with patient-003 (smallest record)
-
 ## Configuration
 
 Set via environment variables or `.env` file:
@@ -160,13 +216,18 @@ Set via environment variables or `.env` file:
 |----------|---------|-------------|
 | `GOOGLE_API_KEY` | - | Google API key (required) |
 | `SERVICE_NAME` | `genai-service` | Service name in traces |
-| `OTEL_ENABLED` | `true` | Enable Jaeger export |
-| `OTEL_ENDPOINT` | `http://localhost:4318/v1/traces` | OTLP endpoint |
-| `ARIZE_ENABLED` | `true` | Enable Arize export |
-| `ARIZE_API_KEY` | - | Arize API key |
-| `ARIZE_SPACE_ID` | - | Arize space ID |
-| `ARIZE_PROJECT_NAME` | `genai-service` | Arize project name |
+| `OTEL_ENABLED` | `true` | Enable Jaeger export (all spans) |
+| `OTEL_ENDPOINT` | `http://localhost:4318/v1/traces` | OTLP endpoint for Jaeger |
 | `OTEL_CONSOLE_DEBUG` | `false` | Print spans to console |
+| `ARIZE_MODE` | `disabled` | GenAI trace backend: `phoenix`, `ax`, or `disabled` |
+| `ARIZE_ENDPOINT` | - | Endpoint URL (required for `phoenix` and `ax`) |
+| `ARIZE_API_KEY` | - | API key (required for `ax` mode only) |
+| `ARIZE_SPACE_ID` | - | Space ID (required for `ax` mode only) |
+| `GCS_PROJECT_ID` | - | GCP project ID (required for medical records) |
+| `GCS_BUCKET_NAME` | - | GCS bucket name (required for medical records) |
+| `GCS_RAW_PREFIX` | `raw` | Prefix for raw patient records |
+| `GCS_SUMMARIES_PREFIX` | `summaries` | Prefix for patient summaries |
+| `GCS_INDEX_FILE` | `index.json` | Patient index filename |
 
 ## Justfile Commands
 
@@ -194,6 +255,13 @@ just travel "query"
 just code task="generate" prompt="fibonacci"
 just research "topic"
 just health
+
+# Medical Records
+just setup-data          # Upload Synthea data to GCS
+just setup-data-dry-run  # Preview upload commands
+just patients            # List patients
+just summarize patient_id="patient-001"
+just summary patient_id="patient-001"
 ```
 
 ## View Traces
