@@ -8,7 +8,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from llmops._internal.instrumentation import apply_instrumentation
-from llmops._internal.telemetry import create_noop_tracer_provider, create_tracer_provider
+from llmops._internal.telemetry import (
+    create_noop_tracer_provider,
+    create_tracer_provider,
+)
 from llmops.config import load_config
 from llmops.exceptions import ConfigurationError
 

@@ -35,6 +35,12 @@ class ArizeConfig:
     project_name: str | None = None
     api_key: str | None = None
     space_id: str | None = None
+    # TLS certificate configuration (can also be set via OTEL env vars)
+    certificate_file: str | None = None  # CA cert for server verification (.pem)
+    client_key_file: str | None = None  # Client private key for mTLS (.pem)
+    client_certificate_file: str | None = None  # Client cert for mTLS (.pem)
+    # Mode selection: try arize.otel.register if available
+    use_arize_otel: bool = True
 
 
 @dataclass
@@ -110,9 +116,7 @@ def _substitute_env_vars(value: str, strict: bool) -> str:
     return ENV_VAR_PATTERN.sub(replace_match, value)
 
 
-def _substitute_env_vars_recursive(
-    data: Any, strict: bool
-) -> Any:
+def _substitute_env_vars_recursive(data: Any, strict: bool) -> Any:
     """Recursively substitute environment variables in a data structure.
 
     Args:
@@ -141,12 +145,32 @@ def _parse_service_config(data: dict[str, Any]) -> ServiceConfig:
 
 
 def _parse_arize_config(data: dict[str, Any]) -> ArizeConfig:
-    """Parse Arize configuration section."""
+    """Parse Arize configuration section.
+
+    TLS certificate paths support env var fallbacks:
+    - certificate_file: OTEL_EXPORTER_OTLP_CERTIFICATE
+    - client_key_file: OTEL_EXPORTER_OTLP_CLIENT_KEY
+    - client_certificate_file: OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE
+    """
     return ArizeConfig(
         endpoint=data.get("endpoint", ""),
         project_name=data.get("project_name"),
         api_key=data.get("api_key"),
         space_id=data.get("space_id"),
+        # TLS: config file values override env vars
+        certificate_file=data.get(
+            "certificate_file",
+            os.environ.get("OTEL_EXPORTER_OTLP_CERTIFICATE"),
+        ),
+        client_key_file=data.get(
+            "client_key_file",
+            os.environ.get("OTEL_EXPORTER_OTLP_CLIENT_KEY"),
+        ),
+        client_certificate_file=data.get(
+            "client_certificate_file",
+            os.environ.get("OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE"),
+        ),
+        use_arize_otel=data.get("use_arize_otel", True),
     )
 
 
@@ -206,6 +230,27 @@ def _validate_config(config: LLMOpsConfig) -> list[str]:
     # Arize endpoint is required
     if not config.arize.endpoint:
         errors.append("arize.endpoint is required")
+
+    # Validate TLS certificate files exist (strict mode only)
+    # In permissive mode, these are logged as warnings during telemetry setup
+    if config.arize.certificate_file:
+        cert_path = Path(config.arize.certificate_file)
+        if not cert_path.exists():
+            errors.append(
+                f"Certificate file not found: {config.arize.certificate_file}"
+            )
+
+    if config.arize.client_key_file:
+        key_path = Path(config.arize.client_key_file)
+        if not key_path.exists():
+            errors.append(f"Client key file not found: {config.arize.client_key_file}")
+
+    if config.arize.client_certificate_file:
+        client_cert_path = Path(config.arize.client_certificate_file)
+        if not client_cert_path.exists():
+            errors.append(
+                f"Client certificate file not found: {config.arize.client_certificate_file}"
+            )
 
     return errors
 
