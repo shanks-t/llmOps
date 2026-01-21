@@ -1,1 +1,1 @@
-"""Internal modules - not part of public API."""
+"""Internal implementation details. Not part of public API."""

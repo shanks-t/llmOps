@@ -726,6 +726,7 @@ dependencies = [
     { name = "proto-plus" },
     { name = "protobuf" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/65/38/89317773c64b5a7e9b56b9aecb2e39ac02d8d6d09fb5b276710c6892e690/google_cloud_appengine_logging-1.8.0.tar.gz", hash = "sha256:84b705a69e4109fc2f68dfe36ce3df6a34d5c3d989eee6d0ac1b024dda0ba6f5", size = 18071 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a2/66/4a9be8afb1d0bf49472478cec20fefe4f4cb3a6e67be2231f097041e7339/google_cloud_appengine_logging-1.8.0-py3-none-any.whl", hash = "sha256:a4ce9ce94a9fd8c89ed07fa0b06fcf9ea3642f9532a1be1a8c7b5f82c0a70ec6", size = 18380 },
 ]
@@ -1523,6 +1524,7 @@ dependencies = [
     { name = "opentelemetry-exporter-otlp-proto-http" },
     { name = "opentelemetry-sdk" },
     { name = "python-dotenv" },
+    { name = "pyyaml" },
 ]
 
 [package.optional-dependencies]
@@ -1579,6 +1581,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
     { name = "pytest-mock", marker = "extra == 'test'", specifier = ">=3.14.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
+    { name = "pyyaml", specifier = ">=6.0.0" },
     { name = "uvicorn", marker = "extra == 'test'", specifier = ">=0.34.0" },
 ]
 provides-extras = ["phoenix", "mlflow", "test", "all"]

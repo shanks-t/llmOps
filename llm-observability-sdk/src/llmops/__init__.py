@@ -1,52 +1,29 @@
-"""
-LLM Observability SDK — Unified auto-instrumentation for LLM applications.
+"""LLM Observability SDK — Unified auto-instrumentation for LLM applications.
 
-This SDK provides a thin orchestration layer over existing auto-instrumentation
-libraries. Each backend uses its native instrumentation.
-
-- Phoenix: OpenInference semantic conventions
-- MLflow: MLflow native autolog
+This SDK provides a single entry point for auto-instrumentation of Google ADK
+and Google GenAI with Arize telemetry.
 
 Usage:
     import llmops
 
-    # Configure for Phoenix
-    llmops.configure(
-        backend="phoenix",
-        endpoint="http://localhost:6006/v1/traces",
-        service_name="my-agent",
-    )
+    # Initialize with config file path
+    llmops.init(config_path="/path/to/llmops.yaml")
 
-    # OR configure for MLflow
-    llmops.configure(
-        backend="mlflow",
-        endpoint="http://localhost:5001",
-        service_name="my-agent",
-    )
+    # Or use LLMOPS_CONFIG_PATH environment variable
+    # export LLMOPS_CONFIG_PATH=/path/to/llmops.yaml
+    llmops.init()
 
     # Your app code runs with auto-instrumentation enabled
     # ...
-
-    llmops.shutdown()
 """
 
-from llmops.configure import (
-    configure,
-    init,
-    shutdown,
-    ConfigurationError,
-    get_backend,
-    is_configured,
-)
+from llmops.exceptions import ConfigurationError
+from llmops.init import init
 
 __version__ = "0.1.0"
 
 __all__ = [
-    "configure",
     "init",
-    "shutdown",
     "ConfigurationError",
-    "get_backend",
-    "is_configured",
     "__version__",
 ]
