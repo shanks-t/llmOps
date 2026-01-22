@@ -1,4 +1,4 @@
-"""Main init() entry point for the llmops SDK."""
+"""Main instrument() entry point for the llmops SDK."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 LLMOPS_CONFIG_PATH_ENV = "LLMOPS_CONFIG_PATH"
 
 
-def init(config_path: str | Path | None = None) -> TracerProvider:
+def instrument(config_path: str | Path | None = None) -> TracerProvider:
     """Initialize Arize telemetry and auto-instrumentation.
 
     This single call:
@@ -50,11 +50,11 @@ def init(config_path: str | Path | None = None) -> TracerProvider:
         import os
         os.environ["LLMOPS_CONFIG_PATH"] = "/path/to/llmops.yaml"
         import llmops
-        llmops.init()
+        llmops.instrument()
 
         # Using explicit path
         import llmops
-        llmops.init(config_path="/path/to/llmops.yaml")
+        llmops.instrument(config_path="/path/to/llmops.yaml")
     """
     # Step 1: Resolve config path
     resolved_path = _resolve_config_path(config_path)
@@ -102,7 +102,7 @@ def _resolve_config_path(config_path: str | Path | None) -> Path:
     3. Raise ConfigurationError (no default/auto-discovery)
 
     Args:
-        config_path: Explicit path from init() argument.
+        config_path: Explicit path from instrument() argument.
 
     Returns:
         Resolved Path to configuration file.
@@ -121,6 +121,6 @@ def _resolve_config_path(config_path: str | Path | None) -> Path:
 
     # No config path available
     raise ConfigurationError(
-        f"No configuration path provided. Either pass config_path to init() "
+        f"No configuration path provided. Either pass config_path to instrument() "
         f"or set the {LLMOPS_CONFIG_PATH_ENV} environment variable."
     )

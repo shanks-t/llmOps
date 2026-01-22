@@ -16,17 +16,14 @@ keywords = [
 ]
 
 dependencies = [
+    "arize-otel>=0.7.0",
     "opentelemetry-api>=1.30.0",
     "opentelemetry-sdk>=1.30.0",
-    "opentelemetry-exporter-otlp-proto-http>=1.30.0",
     "python-dotenv>=1.0.0",
     "pyyaml>=6.0.0",
 ]
 
 [project.optional-dependencies]
-arize = [
-    "arize-otel>=0.7.0", # For arize.otel.register support
-]
 phoenix = [
     "openinference-instrumentation-google-adk>=0.1.5",
     "openinference-instrumentation-google-genai>=0.1.9",
@@ -41,7 +38,7 @@ test = [
     "pytest-mock>=3.14.0",
     "httpx>=0.27.0",
 ]
-all = ["llmops[arize,phoenix,test]"]
+all = ["llmops[phoenix,test]"]
 
 [build-system]
 requires = ["hatchling"]

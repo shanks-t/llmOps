@@ -36,11 +36,11 @@ class TestPermissiveMode:
     ) -> None:
         """
         PRD: PRD_01
-        API: API_SPEC_01.init()
+        API: API_SPEC_01.instrument()
 
         GIVEN a config file with validation mode set to "permissive"
         AND the config file is missing required fields
-        WHEN llmops.init() is called with that config
+        WHEN llmops.instrument() is called with that config
         THEN a provider is returned (no-op tracer provider)
         AND no exception is raised
         """
@@ -51,7 +51,7 @@ class TestPermissiveMode:
             "# Missing required 'service' and 'arize' sections\n"
         )
 
-        provider = llmops_module.init(config_path=config_path)
+        provider = llmops_module.instrument(config_path=config_path)
 
         assert provider is not None
 
@@ -66,11 +66,11 @@ class TestStrictMode:
     ) -> None:
         """
         PRD: PRD_01
-        API: API_SPEC_01.init()
+        API: API_SPEC_01.instrument()
 
         GIVEN a config file with validation mode set to "strict"
         AND the config file is missing required fields
-        WHEN llmops.init() is called with that config
+        WHEN llmops.instrument() is called with that config
         THEN a ConfigurationError is raised
         """
         config_path = tmp_path / "llmops.yaml"
@@ -81,7 +81,7 @@ class TestStrictMode:
         )
 
         with pytest.raises(llmops_module.ConfigurationError):
-            llmops_module.init(config_path=config_path)
+            llmops_module.instrument(config_path=config_path)
 
 
 class TestTelemetryIsolation:
@@ -94,7 +94,7 @@ class TestTelemetryIsolation:
     ) -> None:
         """
         PRD: PRD_01
-        API: API_SPEC_01.init()
+        API: API_SPEC_01.instrument()
 
         GIVEN a valid config file with permissive validation
         AND the application has business logic that initializes telemetry
@@ -115,7 +115,7 @@ class TestTelemetryIsolation:
         # Simulate business logic that wraps telemetry initialization
         def business_logic() -> str:
             """Business logic that should never fail due to telemetry."""
-            llmops_module.init(config_path=config_path)
+            llmops_module.instrument(config_path=config_path)
             return "business logic completed"
 
         # Business logic must complete without exception
@@ -129,14 +129,14 @@ class TestTelemetryIsolation:
     ) -> None:
         """
         PRD: PRD_01
-        API: API_SPEC_01.init()
+        API: API_SPEC_01.instrument()
 
         GIVEN a successfully initialized SDK
         WHEN telemetry operations fail at runtime (e.g., network errors)
         THEN no exceptions propagate to user code
         AND business logic continues uninterrupted
         """
-        provider = llmops_module.init(config_path=valid_config_file)
+        provider = llmops_module.instrument(config_path=valid_config_file)
         assert provider is not None
 
         # Simulate business logic that creates spans

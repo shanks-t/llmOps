@@ -19,7 +19,7 @@ This document defines the public API for PRD_01. The SDK exposes a single entry 
 ```
 llmops/
 ├── __init__.py      # Public API exports
-├── init.py          # init() entry point
+├── instrument.py    # instrument() entry point
 ├── config.py        # Config loader and data models
 └── _internal/       # Private implementation
 ```
@@ -28,13 +28,13 @@ llmops/
 
 ## 3. Public API
 
-### 3.1 `init()`
+### 3.1 `instrument()`
 
 Initialize Arize telemetry and auto-instrumentation in a single call.
 
 **Signature:**
 ```python
-def init(
+def instrument(
     config_path: str | Path | None = None,
 ) -> TracerProvider:
     """
@@ -51,7 +51,7 @@ def init(
         ConfigurationError: If config is missing or invalid (startup only).
 
     Behavior:
-        - Loads config from explicit path (`init()` arg or `LLMOPS_CONFIG_PATH`).
+        - Loads config from explicit path (`instrument()` arg or `LLMOPS_CONFIG_PATH`).
         - Applies environment variable overrides.
         - Configures Arize telemetry (Phoenix or Arize AX).
         - Sets the global tracer provider.
@@ -65,14 +65,14 @@ def init(
 ```python
 import llmops
 
-llmops.init()
+llmops.instrument()
 ```
 
 **Custom Config Path Example:**
 ```python
 import llmops
 
-llmops.init(config_path="/services/chat/llmops.yaml")
+llmops.instrument(config_path="/services/chat/llmops.yaml")
 ```
 
 ---
@@ -83,11 +83,11 @@ llmops.init(config_path="/services/chat/llmops.yaml")
 
 - Preferred file name is `llmops.yaml`.
 - `llmops.yml` is supported.
-- The path must be provided explicitly via `init()` or `LLMOPS_CONFIG_PATH`.
+- The path must be provided explicitly via `instrument()` or `LLMOPS_CONFIG_PATH`.
 
 ### 4.2 Environment Overrides
 
-Environment variables override config values. Sensitive values (example: API keys) are expected to be set via environment variables. `LLMOPS_CONFIG_PATH` provides the config path when `init()` omits it.
+Environment variables override config values. Sensitive values (example: API keys) are expected to be set via environment variables. `LLMOPS_CONFIG_PATH` provides the config path when `instrument()` omits it.
 
 ### 4.3 YAML Schema
 
@@ -112,9 +112,6 @@ arize:
   # Path can be relative (resolved from config file) or absolute
   certificate_file: "./certs/ca.pem"
 
-  # TracerProvider creation mode
-  use_arize_otel: true                # Use arize.otel.register if available
-
 instrumentation:
   google_adk: true
   google_genai: true
@@ -132,7 +129,7 @@ validation:
 
 ### 5.1 `ConfigurationError`
 
-Raised only during `init()` when configuration is invalid in strict mode.
+Raised only during `instrument()` when configuration is invalid in strict mode.
 
 ```python
 class ConfigurationError(Exception):
@@ -158,7 +155,7 @@ Environment variable names will follow the `LLMOPS_` prefix. Standard OpenTeleme
 
 ## 7. Public API Summary
 
-- `llmops.init(config_path: str | Path | None = None) -> TracerProvider`
+- `llmops.instrument(config_path: str | Path | None = None) -> TracerProvider`
 - `llmops.ConfigurationError`
 
 ---

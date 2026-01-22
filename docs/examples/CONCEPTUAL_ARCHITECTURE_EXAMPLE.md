@@ -25,7 +25,7 @@ The SDK provides two instrumentation modes that can be used independently or tog
 │  │   (Quick Start)             │    │   (Fine-grained Control)        ││
 │  │                             │    │                                 ││
 │  │   import llmops             │    │   @llmops.llm(model="gpt-4o")  ││
-│  │   llmops.init()             │    │   async def generate(prompt):  ││
+│  │   llmops.instrument()       │    │   async def generate(prompt):  ││
 │  │                             │    │       llmops.set_input(prompt) ││
 │  │   # That's it! LLM calls    │    │       ...                      ││
 │  │   # automatically traced    │    │       llmops.set_output(result)││
@@ -70,7 +70,7 @@ The SDK provides two instrumentation modes that can be used independently or tog
 ┌─────────────────────────────────────────────────────────────────────────┐
 │  LAYER 5: Public API                                                    │
 │  ─────────────────────────────────────────────────────────────────────  │
-│  • Initialization: init()                                               │
+│  • Initialization: instrument()                                         │
 │  • Decorators: @llmops.llm(), @llmops.tool(), @llmops.agent()          │
 │  • Enrichment: set_input(), set_output(), set_tokens()                 │
 │                                                                         │
@@ -129,7 +129,7 @@ The SDK provides two instrumentation modes that can be used independently or tog
     ───────────────────              ──────────────            ─────────────────
 
     import llmops
-    llmops.init()
+    llmops.instrument()
             │
             ▼
     ┌───────────────────┐     ┌───────────────────┐
@@ -328,7 +328,7 @@ The SDK provides two instrumentation modes that can be used independently or tog
 │  │                      │                                          │   │
 │  │                      ▼                                          │   │
 │  │            AUTO-INSTRUMENTATION                                 │   │
-│  │            llmops.init() + config file                          │   │
+│  │            llmops.instrument() + config file                          │   │
 │  └─────────────────────────────────────────────────────────────────┘   │
 │                                                                         │
 │  ┌─────────────────────────────────────────────────────────────────┐   │
@@ -346,7 +346,7 @@ The SDK provides two instrumentation modes that can be used independently or tog
 │  │                      │                                          │   │
 │  │                      ▼                                          │   │
 │  │            BOTH (they coexist!)                                 │   │
-│  │            llmops.init() + @llmops.* where needed               │   │
+│  │            llmops.instrument() + @llmops.* where needed               │   │
 │  └─────────────────────────────────────────────────────────────────┘   │
 │                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
@@ -365,7 +365,7 @@ llmops.init()
 async def research(query: str):
     llmops.set_attribute("query.topic", extract_topic(query))
 
-    # These OpenAI calls are auto-traced by init()
+    # These OpenAI calls are auto-traced by instrument()
     # AND nested under the manual "research-agent" span
     plan = await openai.chat.completions.create(...)
     results = await openai.chat.completions.create(...)
@@ -460,7 +460,7 @@ async def research(query: str):
 
 | User Need | Solution |
 |-----------|----------|
-| Quick start with zero code changes | Auto-instrumentation via `init()` |
+| Quick start with zero code changes | Auto-instrumentation via `instrument()` |
 | Fine-grained control and custom attributes | Manual instrumentation via decorators |
 | Both baseline traces and custom business logic | Use both together |
 

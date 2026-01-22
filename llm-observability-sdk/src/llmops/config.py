@@ -39,8 +39,6 @@ class ArizeConfig:
     # Can be relative path (resolved from config file) or absolute path
     # Fallback: OTEL_EXPORTER_OTLP_CERTIFICATE env var
     certificate_file: str | None = None
-    # Mode selection: try arize.otel.register if available
-    use_arize_otel: bool = True
     # Transport protocol: "http" (default) or "grpc"
     transport: str = "http"
     # Span processor: True for BatchSpanProcessor (default), False for SimpleSpanProcessor
@@ -184,7 +182,6 @@ def _parse_arize_config(
         api_key=data.get("api_key"),
         space_id=data.get("space_id"),
         certificate_file=certificate_file,
-        use_arize_otel=data.get("use_arize_otel", True),
         transport=transport,
         batch_spans=data.get("batch_spans", True),
         debug=data.get("debug", False),

@@ -1,0 +1,22 @@
+# llmops.yaml - SDK configuration for Phoenix (local Docker backend)
+#
+# This configuration demonstrates the llmops.instrument() API from API_SPEC_01.md.
+# Traces are sent to Phoenix running in Docker (see docker/docker-compose.yaml).
+
+service:
+  name: "llmops-demo"
+  version: "0.1.0"
+
+arize:
+  endpoint: "http://localhost:6006/v1/traces"
+  project_name: "llmops-demo"
+
+instrumentation:
+  google_adk: true
+  google_genai: true
+
+privacy:
+  capture_content: false
+
+validation:
+  mode: permissive

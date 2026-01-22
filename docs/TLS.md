@@ -71,7 +71,7 @@ validation:
 ```python
 import llmops
 
-llmops.init(config_path="./llmops.yaml")
+llmops.instrument(config_path="./llmops.yaml")
 ```
 
 ---

@@ -1,0 +1,56 @@
+# Justfile for llmops_demo example
+
+# Default recipe - run the server
+default: run
+
+# Run the FastAPI server with hot reload
+run:
+    uv run uvicorn main:app --reload
+
+# Install dependencies
+install:
+    uv sync
+
+# Lint with ruff
+lint:
+    uv run ruff check .
+
+# Format with ruff
+format:
+    uv run ruff format .
+
+# Type check with mypy
+typecheck:
+    uv run mypy .
+
+# Run all checks
+check: lint typecheck
+
+# Test the /chat endpoint (requires server running)
+test-chat:
+    curl -s -X POST http://localhost:8000/chat \
+        -H "Content-Type: application/json" \
+        -d '{"message": "What is the weather in Paris?"}' | uv run python -m json.tool
+
+# Test chat with time query
+test-time:
+    curl -s -X POST http://localhost:8000/chat \
+        -H "Content-Type: application/json" \
+        -d '{"message": "What time is it in Tokyo?"}' | uv run python -m json.tool
+
+# Test chat with both tools
+test-both:
+    curl -s -X POST http://localhost:8000/chat \
+        -H "Content-Type: application/json" \
+        -d '{"message": "What is the weather and time in London?"}' | uv run python -m json.tool
+
+# Get service info
+test-root:
+    curl -s http://localhost:8000/ | uv run python -m json.tool
+
+# Health check
+test-health:
+    curl -s http://localhost:8000/health | uv run python -m json.tool
+
+# Run all endpoint tests
+test-all: test-root test-health test-chat test-time

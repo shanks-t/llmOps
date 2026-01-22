@@ -24,7 +24,7 @@ A single initialization call wires three concerns:
 │                         APPLICATION CODE                              │
 │                                                                      │
 │  import llmops                                                       │
-│  llmops.init()  ──────────────────────────────────────────────────┐  │
+│  llmops.instrument()  ────────────────────────────────────────────┐  │
 │                                                                  │  │
 │  # Google ADK + Google GenAI calls are auto-traced                │  │
 │                                                                  │  │
@@ -57,7 +57,7 @@ A single initialization call wires three concerns:
 Application startup
         │
         ▼
-  llmops.init()
+  llmops.instrument()
         │
         ▼
   Load config (explicit path via init or env var)
@@ -96,7 +96,7 @@ Application startup
 ## 5. Key Invariants
 
 - Telemetry never breaks business logic.
-- `init()` is a single synchronous call.
+- `instrument()` is a single synchronous call.
 - Only single-backend greenfield setups are supported.
 - All configuration is file-first with explicit path selection.
 - Config validation supports strict and permissive modes.
@@ -105,7 +105,7 @@ Application startup
 
 ## 6. Separation of Responsibilities
 
-- **Application code**: calls `init()` and runs business logic.
+- **Application code**: calls `instrument()` and runs business logic.
 - **Config loader**: resolves file + env settings into a validated config.
 - **Telemetry setup**: creates the tracer provider and exporter for Arize.
 - **Instrumentor runner**: wires Google ADK + Google GenAI auto-instrumentation.

@@ -1,6 +1,6 @@
 # LLM Observability SDK
 
-A unified auto-instrumentation SDK for LLM observability. Instrument your LLM applications with a single `init()` call and view traces in your preferred backend.
+A unified auto-instrumentation SDK for LLM observability. Instrument your LLM applications with a single `instrument()` call and view traces in your preferred backend.
 
 ## Features
 
@@ -95,7 +95,7 @@ privacy:
 ```python
 import llmops
 
-llmops.init()  # Auto-instruments all supported libraries
+llmops.instrument()  # Auto-instruments all supported libraries
 
 # Your LLM calls are now automatically traced
 response = openai.chat.completions.create(...)

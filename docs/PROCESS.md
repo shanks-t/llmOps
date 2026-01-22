@@ -180,14 +180,14 @@ Names communicate intent, not mechanics.
 **5. Docstrings (GIVEN/WHEN/THEN + metadata)**
 
 ```python
-def test_init_resolves_config_from_env_var():
+def test_instrument_resolves_config_from_env_var():
     """
     PRD: PRD_01
-    API: API_SPEC_01.init()
+    API: API_SPEC_01.instrument()
 
     GIVEN a valid config file exists
     AND the LLMOPS_CONFIG_PATH environment variable is set to that path
-    WHEN llmops.init() is called without arguments
+    WHEN llmops.instrument() is called without arguments
     THEN a TracerProvider is returned
     """
 ```

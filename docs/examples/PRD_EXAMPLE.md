@@ -33,7 +33,7 @@ The SDK provides **two instrumentation modes**:
 
 | Mode | Use Case | Setup |
 |------|----------|-------|
-| **Auto-instrumentation** | Quick start, standard patterns | `llmops.init()` + config file |
+| **Auto-instrumentation** | Quick start, standard patterns | `llmops.instrument()` + config file |
 | **Manual instrumentation** | Custom logic, fine-grained control | Decorators + enrichment calls |
 
 ---
@@ -101,7 +101,7 @@ The SDK provides **two instrumentation modes**:
 
 | ID | Requirement | Priority |
 |----|-------------|----------|
-| A1 | Single `init()` call enables auto-instrumentation based on config | Must |
+| A1 | Single `instrument()` call enables auto-instrumentation based on config | Must |
 | A2 | Auto-instrumentation supports Arize Phoenix (OpenInference) | Must |
 | A3 | Auto-instrumentation supports MLflow | Must |
 | A4 | Auto-instrumentors for all backend-supported libraries enabled by default | Must |
@@ -175,7 +175,7 @@ The SDK provides **two instrumentation modes**:
 
 **Acceptance:**
 - Create config file pointing to backend (Arize or MLflow)
-- Call `llmops.init()` at application startup
+- Call `llmops.instrument()` at application startup
 - All supported LLM library calls automatically traced
 - Traces appear in configured backend without any decorators
 
@@ -189,7 +189,7 @@ phoenix:
 
 ```python
 import llmops
-llmops.init()  # Auto-instruments all supported libraries
+llmops.instrument()  # Auto-instruments all supported libraries
 
 # No decorators needed - calls are automatically traced
 response = openai.chat.completions.create(...)

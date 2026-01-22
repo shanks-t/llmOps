@@ -138,12 +138,20 @@ def mock_sdk_telemetry(
     The fixture yields the in_memory_exporter so tests can optionally
     inspect captured spans if needed.
     """
+    import sys
 
     def mock_create_tracer_provider(config: "LLMOpsConfig") -> TracerProvider:
         return _create_test_tracer_provider(config, in_memory_exporter)
 
+    # Access the actual instrument module via sys.modules (not the function)
+    # This is necessary because llmops.__init__ exports 'instrument' as a function,
+    # which shadows the llmops.instrument module in import resolution
+    import llmops  # noqa: F401 - ensures module is loaded
+
+    instrument_module = sys.modules["llmops.instrument"]
     monkeypatch.setattr(
-        "llmops._internal.telemetry.create_tracer_provider",
+        instrument_module,
+        "create_tracer_provider",
         mock_create_tracer_provider,
     )
 

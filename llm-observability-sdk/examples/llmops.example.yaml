@@ -50,11 +50,6 @@ arize:
   # See "TLS Setup for Self-Hosted Arize" section below
   # certificate_file: ./certs/arize-ca.pem
 
-  # Optional: TracerProvider creation mode (default: true)
-  # - true: Use arize.otel.register if arize-otel package is installed
-  # - false: Always use manual OTLP setup
-  use_arize_otel: true
-
 # -----------------------------------------------------------------------------
 # Auto-Instrumentation Configuration (optional)
 # -----------------------------------------------------------------------------
@@ -126,7 +121,6 @@ validation:
 #   transport: http
 #   batch_spans: false      # Use SimpleSpanProcessor for immediate span export
 #   debug: true             # Log spans to console for debugging
-#   use_arize_otel: false   # Phoenix doesn't need arize.otel
 #
 # instrumentation:
 #   google_adk: true
@@ -150,7 +144,6 @@ validation:
 #   transport: http
 #   batch_spans: true
 #   debug: false
-#   use_arize_otel: true
 #
 # instrumentation:
 #   google_adk: true
@@ -177,7 +170,6 @@ validation:
 #   certificate_file: ./certs/arize-ca.pem   # Relative path from this config file
 #   transport: http
 #   batch_spans: true
-#   use_arize_otel: true
 #
 # validation:
 #   mode: strict

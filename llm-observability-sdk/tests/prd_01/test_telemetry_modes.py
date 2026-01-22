@@ -1,8 +1,7 @@
-"""Tests for telemetry dual-mode (arize.otel vs manual OTLP) and TLS configuration.
+"""Tests for telemetry setup using arize.otel and TLS configuration.
 
 Requirements covered:
-- Support for arize.otel.register when available
-- Fallback to manual OTLP when arize-otel not installed
+- TracerProvider creation via arize.otel.register
 - TLS certificate configuration via config file
 - TLS certificate configuration via environment variables
 - Certificate file existence validation
@@ -10,7 +9,7 @@ Requirements covered:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -26,13 +25,13 @@ CAPABILITY = "telemetry_modes"
 class TestArizeOtelMode:
     """Tests for arize.otel.register integration."""
 
-    def test_create_via_arize_otel_calls_register(
+    def test_create_tracer_provider_calls_register(
         self,
         tmp_path: "Path",
     ) -> None:
         """
         GIVEN a valid config with arize credentials
-        WHEN _create_via_arize_otel is called
+        WHEN create_tracer_provider is called
         THEN arize.otel.register is called with correct arguments
         """
         config_content = """service:
@@ -54,8 +53,12 @@ arize:
         # Create a mock for arize.otel.register
         mock_provider = MagicMock()
         mock_register = MagicMock(return_value=mock_provider)
+        mock_transport = MagicMock()
+        mock_transport.HTTP = "HTTP"
+        mock_transport.GRPC = "GRPC"
         mock_arize_otel = MagicMock()
         mock_arize_otel.register = mock_register
+        mock_arize_otel.Transport = mock_transport
 
         with patch.dict("sys.modules", {"arize.otel": mock_arize_otel}):
             # Import after patching sys.modules
@@ -65,7 +68,7 @@ arize:
 
             importlib.reload(telemetry_module)
 
-            provider = telemetry_module._create_via_arize_otel(config)
+            provider = telemetry_module.create_tracer_provider(config)
 
             mock_register.assert_called_once()
             call_kwargs = mock_register.call_args[1]
@@ -74,60 +77,6 @@ arize:
             assert call_kwargs["project_name"] == "test-project"
             assert call_kwargs["endpoint"] == "https://otlp.arize.com/v1/traces"
             assert provider == mock_provider
-
-    def test_falls_back_to_manual_when_arize_otel_not_installed(
-        self,
-        tmp_path: "Path",
-        monkeypatch: pytest.MonkeyPatch,
-        mock_sdk_telemetry: Any,
-    ) -> None:
-        """
-        GIVEN arize-otel is NOT installed
-        AND use_arize_otel is True (default)
-        WHEN create_tracer_provider is called
-        THEN manual OTLP setup is used
-        """
-        config_content = """service:
-  name: test-service
-
-arize:
-  endpoint: http://localhost:6006/v1/traces
-"""
-        config_path = tmp_path / "config.yaml"
-        config_path.write_text(config_content)
-
-        # The mock_sdk_telemetry fixture replaces create_tracer_provider
-        # which uses manual OTLP. Since arize-otel is not installed,
-        # the import will fail and it falls back to manual.
-        import llmops
-
-        provider = llmops.init(config_path=config_path)
-        assert provider is not None
-
-    def test_uses_manual_otlp_when_use_arize_otel_false(
-        self,
-        tmp_path: "Path",
-        mock_sdk_telemetry: Any,
-    ) -> None:
-        """
-        GIVEN use_arize_otel is False in config
-        WHEN create_tracer_provider is called
-        THEN manual OTLP setup is used (even if arize-otel would be available)
-        """
-        config_content = """service:
-  name: test-service
-
-arize:
-  endpoint: http://localhost:6006/v1/traces
-  use_arize_otel: false
-"""
-        config_path = tmp_path / "config.yaml"
-        config_path.write_text(config_content)
-
-        import llmops
-
-        provider = llmops.init(config_path=config_path)
-        assert provider is not None
 
 
 class TestNewConfigOptions:
@@ -304,7 +253,7 @@ arize:
     ) -> None:
         """
         GIVEN transport, batch_spans, and debug are specified in config
-        WHEN _create_via_arize_otel is called
+        WHEN create_tracer_provider is called
         THEN arize.otel.register receives these options
         """
         config_content = """service:
@@ -342,7 +291,7 @@ arize:
 
             importlib.reload(telemetry_module)
 
-            telemetry_module._create_via_arize_otel(config)
+            telemetry_module.create_tracer_provider(config)
 
             mock_register.assert_called_once()
             call_kwargs = mock_register.call_args[1]
@@ -684,15 +633,14 @@ arize:
 
         assert os.environ.get("OTEL_EXPORTER_OTLP_CERTIFICATE") is None
 
-    def test_arize_otel_path_calls_bridge(
+    def test_create_tracer_provider_calls_bridge(
         self,
         tmp_path: "Path",
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """
         GIVEN certificate_file is specified in config
-        AND arize-otel is available
-        WHEN _create_via_arize_otel is called
+        WHEN create_tracer_provider is called
         THEN _bridge_tls_config_to_env is called (env var is set)
         """
         # Clear env var
@@ -734,7 +682,7 @@ arize:
 
             importlib.reload(telemetry_module)
 
-            telemetry_module._create_via_arize_otel(config)
+            telemetry_module.create_tracer_provider(config)
 
             # Verify env var was set by the bridge
             import os
