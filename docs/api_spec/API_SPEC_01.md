@@ -124,9 +124,6 @@ instrumentation:
   google_adk: true
   google_genai: true
 
-privacy:
-  capture_content: false
-
 validation:
   mode: permissive  # strict or permissive (default permissive)
 ```

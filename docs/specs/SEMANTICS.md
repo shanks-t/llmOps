@@ -258,37 +258,9 @@ OpenInference uses indexed attribute prefixes instead of arrays:
 
 ---
 
-## 7. Privacy and Content Capture
+## 7. Custom Attributes
 
-### 7.1 Attribute Sensitivity Levels
-
-| Level | OTel GenAI | SDK Behavior |
-|-------|------------|--------------|
-| **Always captured** | `gen_ai.request.model`, `gen_ai.usage.*` | No privacy control |
-| **Opt-in** | `gen_ai.input.messages`, `gen_ai.output.messages` | Requires `capture_content: true` |
-| **Opt-in** | `gen_ai.system_instructions` | Requires `capture_content: true` |
-| **Opt-in** | `gen_ai.tool.call.arguments`, `gen_ai.tool.call.result` | Requires `capture_content: true` |
-
-### 7.2 Metadata-Only Mode (Default)
-
-When `capture_content: false`:
-
-```python
-# Captured
-gen_ai.request.model: "gpt-4o"
-gen_ai.usage.input_tokens: 150
-gen_ai.usage.output_tokens: 42
-
-# NOT captured
-gen_ai.input.messages: (omitted)
-gen_ai.output.messages: (omitted)
-```
-
----
-
-## 8. Custom Attributes
-
-### 8.1 Namespace Convention
+### 7.1 Namespace Convention
 
 SDK custom attributes use configurable namespace (default: `custom`):
 
@@ -300,7 +272,7 @@ custom.user_id: "u-123"
 custom.request_type: "summary"
 ```
 
-### 8.2 Backend Handling
+### 7.2 Backend Handling
 
 | Backend | Custom Attribute Handling |
 |---------|---------------------------|
@@ -310,9 +282,9 @@ custom.request_type: "summary"
 
 ---
 
-## 9. Streaming Semantics
+## 8. Streaming Semantics
 
-### 9.1 Time-to-First-Token
+### 8.1 Time-to-First-Token
 
 Captured automatically on first `emit_chunk()` call:
 
@@ -320,7 +292,7 @@ Captured automatically on first `emit_chunk()` call:
 gen_ai.time_to_first_token_ms: 245
 ```
 
-### 9.2 Chunk Events
+### 8.2 Chunk Events
 
 Each `emit_chunk()` creates a span event:
 
@@ -338,7 +310,7 @@ Each `emit_chunk()` creates a span event:
 
 ---
 
-## 10. Reference Links
+## 9. Reference Links
 
 ### OpenTelemetry GenAI Semantic Conventions
 - Spans: https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-spans/

@@ -85,9 +85,6 @@ phoenix:
 
 mlflow:
   tracking_uri: http://localhost:5001
-
-privacy:
-  capture_content: true  # Set false in production
 ```
 
 ### 3. Initialize in your code

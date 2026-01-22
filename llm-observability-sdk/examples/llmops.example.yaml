@@ -58,12 +58,6 @@ instrumentation:
   google_genai: true    # Enable Google GenAI instrumentation (default: true)
 
 # -----------------------------------------------------------------------------
-# Privacy Configuration (optional)
-# -----------------------------------------------------------------------------
-privacy:
-  capture_content: false    # Capture LLM input/output content (default: false)
-
-# -----------------------------------------------------------------------------
 # Validation Configuration (optional)
 # -----------------------------------------------------------------------------
 validation:
@@ -148,9 +142,6 @@ validation:
 # instrumentation:
 #   google_adk: true
 #   google_genai: true
-#
-# privacy:
-#   capture_content: false
 #
 # validation:
 #   mode: strict

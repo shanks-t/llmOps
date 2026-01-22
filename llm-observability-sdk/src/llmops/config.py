@@ -58,13 +58,6 @@ class InstrumentationConfig:
 
 
 @dataclass
-class PrivacyConfig:
-    """Privacy configuration."""
-
-    capture_content: bool = False
-
-
-@dataclass
 class ValidationConfig:
     """Validation mode configuration."""
 
@@ -80,7 +73,6 @@ class LLMOpsConfig:
     instrumentation: InstrumentationConfig = field(
         default_factory=InstrumentationConfig
     )
-    privacy: PrivacyConfig = field(default_factory=PrivacyConfig)
     validation: ValidationConfig = field(default_factory=ValidationConfig)
 
     @property
@@ -210,13 +202,6 @@ def _parse_instrumentation_config(data: dict[str, Any]) -> InstrumentationConfig
     )
 
 
-def _parse_privacy_config(data: dict[str, Any]) -> PrivacyConfig:
-    """Parse privacy configuration section."""
-    return PrivacyConfig(
-        capture_content=data.get("capture_content", False),
-    )
-
-
 def _parse_validation_config(data: dict[str, Any]) -> ValidationConfig:
     """Parse validation configuration section."""
     mode = data.get("mode", "permissive")
@@ -301,7 +286,6 @@ def load_config(path: Path, strict: bool | None = None) -> LLMOpsConfig:
         service=_parse_service_config(data.get("service", {})),
         arize=_parse_arize_config(data.get("arize", {}), config_dir=config_dir),
         instrumentation=_parse_instrumentation_config(data.get("instrumentation", {})),
-        privacy=_parse_privacy_config(data.get("privacy", {})),
         validation=_parse_validation_config(data.get("validation", {})),
     )
 

@@ -144,7 +144,6 @@ All internal operations follow this pattern, including instrumentation and expor
 | `arize.project_name` | `null` | Phoenix project label |
 | `instrumentation.google_adk` | `true` | Enabled by default |
 | `instrumentation.google_genai` | `true` | Enabled by default |
-| `privacy.capture_content` | `false` | Content capture opt-in |
 | `validation.mode` | `permissive` | `strict` or `permissive` (default permissive) |
 
 ---
