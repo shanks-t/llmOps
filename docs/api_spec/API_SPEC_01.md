@@ -103,6 +103,19 @@ arize:
   api_key: "${ARIZE_API_KEY}"         # Optional, prefer env var
   space_id: "${ARIZE_SPACE_ID}"       # Optional (Arize AX)
 
+  # Transport and processing options
+  transport: "http"                   # "http" (default) or "grpc"
+  batch_spans: true                   # true (default) or false
+  debug: false                        # Log spans to console (default: false)
+
+  # TLS certificate configuration for self-hosted deployments
+  certificate_file: "/path/to/ca.pem"           # CA cert for server verification
+  client_key_file: "/path/to/client-key.pem"    # Client private key (mTLS)
+  client_certificate_file: "/path/to/client.pem" # Client certificate (mTLS)
+
+  # TracerProvider creation mode
+  use_arize_otel: true                # Use arize.otel.register if available
+
 instrumentation:
   google_adk: true
   google_genai: true
@@ -135,11 +148,14 @@ All telemetry failures are swallowed and logged internally. The SDK must never r
 
 ## 6. Environment Variables
 
-Environment variable names will follow the `LLMOPS_` prefix.
+Environment variable names will follow the `LLMOPS_` prefix. Standard OpenTelemetry environment variables are also supported for TLS configuration.
 
 | Variable | Purpose |
 |----------|---------|
 | `LLMOPS_CONFIG_PATH` | Path to `llmops.yaml` or `llmops.yml` |
+| `OTEL_EXPORTER_OTLP_CERTIFICATE` | Fallback for `certificate_file` (CA cert) |
+| `OTEL_EXPORTER_OTLP_CLIENT_KEY` | Fallback for `client_key_file` (mTLS) |
+| `OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE` | Fallback for `client_certificate_file` (mTLS) |
 
 ---
 

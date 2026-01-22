@@ -130,6 +130,227 @@ arize:
         assert provider is not None
 
 
+class TestNewConfigOptions:
+    """Tests for transport, batch_spans, and debug config options."""
+
+    def test_transport_defaults_to_http(
+        self,
+        tmp_path: "Path",
+    ) -> None:
+        """
+        GIVEN transport is NOT specified in config
+        WHEN config is loaded
+        THEN transport defaults to 'http'
+        """
+        config_content = """service:
+  name: test-service
+
+arize:
+  endpoint: https://otlp.arize.com/v1/traces
+"""
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(config_content)
+
+        from llmops.config import load_config
+
+        config = load_config(config_path)
+        assert config.arize.transport == "http"
+
+    def test_transport_grpc_parsed(
+        self,
+        tmp_path: "Path",
+    ) -> None:
+        """
+        GIVEN transport is 'grpc' in config
+        WHEN config is loaded
+        THEN transport is 'grpc'
+        """
+        config_content = """service:
+  name: test-service
+
+arize:
+  endpoint: https://otlp.arize.com/v1/traces
+  transport: grpc
+"""
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(config_content)
+
+        from llmops.config import load_config
+
+        config = load_config(config_path)
+        assert config.arize.transport == "grpc"
+
+    def test_invalid_transport_defaults_to_http(
+        self,
+        tmp_path: "Path",
+    ) -> None:
+        """
+        GIVEN transport is an invalid value
+        WHEN config is loaded
+        THEN transport defaults to 'http' with a warning
+        """
+        config_content = """service:
+  name: test-service
+
+arize:
+  endpoint: https://otlp.arize.com/v1/traces
+  transport: invalid
+"""
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(config_content)
+
+        from llmops.config import load_config
+
+        config = load_config(config_path)
+        assert config.arize.transport == "http"
+
+    def test_batch_spans_defaults_to_true(
+        self,
+        tmp_path: "Path",
+    ) -> None:
+        """
+        GIVEN batch_spans is NOT specified in config
+        WHEN config is loaded
+        THEN batch_spans defaults to True
+        """
+        config_content = """service:
+  name: test-service
+
+arize:
+  endpoint: https://otlp.arize.com/v1/traces
+"""
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(config_content)
+
+        from llmops.config import load_config
+
+        config = load_config(config_path)
+        assert config.arize.batch_spans is True
+
+    def test_batch_spans_false_parsed(
+        self,
+        tmp_path: "Path",
+    ) -> None:
+        """
+        GIVEN batch_spans is false in config
+        WHEN config is loaded
+        THEN batch_spans is False
+        """
+        config_content = """service:
+  name: test-service
+
+arize:
+  endpoint: https://otlp.arize.com/v1/traces
+  batch_spans: false
+"""
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(config_content)
+
+        from llmops.config import load_config
+
+        config = load_config(config_path)
+        assert config.arize.batch_spans is False
+
+    def test_debug_defaults_to_false(
+        self,
+        tmp_path: "Path",
+    ) -> None:
+        """
+        GIVEN debug is NOT specified in config
+        WHEN config is loaded
+        THEN debug defaults to False
+        """
+        config_content = """service:
+  name: test-service
+
+arize:
+  endpoint: https://otlp.arize.com/v1/traces
+"""
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(config_content)
+
+        from llmops.config import load_config
+
+        config = load_config(config_path)
+        assert config.arize.debug is False
+
+    def test_debug_true_parsed(
+        self,
+        tmp_path: "Path",
+    ) -> None:
+        """
+        GIVEN debug is true in config
+        WHEN config is loaded
+        THEN debug is True
+        """
+        config_content = """service:
+  name: test-service
+
+arize:
+  endpoint: https://otlp.arize.com/v1/traces
+  debug: true
+"""
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(config_content)
+
+        from llmops.config import load_config
+
+        config = load_config(config_path)
+        assert config.arize.debug is True
+
+    def test_arize_otel_receives_new_options(
+        self,
+        tmp_path: "Path",
+    ) -> None:
+        """
+        GIVEN transport, batch_spans, and debug are specified in config
+        WHEN _create_via_arize_otel is called
+        THEN arize.otel.register receives these options
+        """
+        config_content = """service:
+  name: test-service
+
+arize:
+  endpoint: https://otlp.arize.com/v1/traces
+  space_id: test-space
+  api_key: test-key
+  transport: http
+  batch_spans: false
+  debug: true
+"""
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(config_content)
+
+        from llmops.config import load_config
+
+        config = load_config(config_path)
+
+        # Mock arize.otel.register and Transport
+        mock_provider = MagicMock()
+        mock_register = MagicMock(return_value=mock_provider)
+        mock_transport = MagicMock()
+        mock_transport.HTTP = "HTTP"
+        mock_transport.GRPC = "GRPC"
+        mock_arize_otel = MagicMock()
+        mock_arize_otel.register = mock_register
+        mock_arize_otel.Transport = mock_transport
+
+        with patch.dict("sys.modules", {"arize.otel": mock_arize_otel}):
+            import importlib
+
+            import llmops._internal.telemetry as telemetry_module
+
+            importlib.reload(telemetry_module)
+
+            telemetry_module._create_via_arize_otel(config)
+
+            mock_register.assert_called_once()
+            call_kwargs = mock_register.call_args[1]
+            assert call_kwargs["transport"] == "HTTP"  # HTTP from Transport enum
+            assert call_kwargs["batch"] is False
+            assert call_kwargs["log_to_console"] is True
+
+
 class TestTLSCertificateConfig:
     """Tests for TLS certificate configuration."""
 
@@ -381,6 +602,231 @@ validation:
             load_config(config_path)
 
         assert "Client certificate file not found" in str(exc_info.value)
+
+
+class TestTLSBridgeToEnvVars:
+    """Tests for _bridge_tls_config_to_env() function.
+
+    This function bridges TLS certificate configuration from llmops config
+    to standard OTEL environment variables, enabling seamless TLS support
+    when using arize.otel.register().
+    """
+
+    def test_bridge_sets_certificate_env_var(
+        self,
+        tmp_path: "Path",
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """
+        GIVEN certificate_file is specified in config
+        AND OTEL_EXPORTER_OTLP_CERTIFICATE env var is NOT set
+        WHEN _bridge_tls_config_to_env is called
+        THEN the env var is set to the certificate path
+        """
+        # Ensure env var is not set
+        monkeypatch.delenv("OTEL_EXPORTER_OTLP_CERTIFICATE", raising=False)
+
+        cert_file = tmp_path / "ca-bundle.pem"
+        cert_file.write_text("dummy cert")
+
+        config_content = f"""service:
+  name: test-service
+
+arize:
+  endpoint: https://otlp.internal/v1/traces
+  certificate_file: {cert_file}
+"""
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(config_content)
+
+        from llmops._internal.telemetry import _bridge_tls_config_to_env
+        from llmops.config import load_config
+
+        config = load_config(config_path)
+        _bridge_tls_config_to_env(config)
+
+        import os
+
+        assert os.environ.get("OTEL_EXPORTER_OTLP_CERTIFICATE") == str(cert_file)
+
+    def test_bridge_does_not_override_existing_env_var(
+        self,
+        tmp_path: "Path",
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """
+        GIVEN OTEL_EXPORTER_OTLP_CERTIFICATE env var is already set
+        AND certificate_file is specified in config
+        WHEN _bridge_tls_config_to_env is called
+        THEN the env var is NOT overridden (setdefault behavior)
+        """
+        existing_cert = "/existing/cert.pem"
+        monkeypatch.setenv("OTEL_EXPORTER_OTLP_CERTIFICATE", existing_cert)
+
+        config_cert = tmp_path / "config-cert.pem"
+        config_cert.write_text("config cert")
+
+        config_content = f"""service:
+  name: test-service
+
+arize:
+  endpoint: https://otlp.internal/v1/traces
+  certificate_file: {config_cert}
+"""
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(config_content)
+
+        from llmops._internal.telemetry import _bridge_tls_config_to_env
+        from llmops.config import load_config
+
+        config = load_config(config_path)
+        _bridge_tls_config_to_env(config)
+
+        import os
+
+        # Should keep existing value, not override
+        assert os.environ.get("OTEL_EXPORTER_OTLP_CERTIFICATE") == existing_cert
+
+    def test_bridge_sets_all_mtls_env_vars(
+        self,
+        tmp_path: "Path",
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """
+        GIVEN all mTLS fields are specified in config
+        WHEN _bridge_tls_config_to_env is called
+        THEN all three OTEL env vars are set
+        """
+        # Clear all env vars
+        monkeypatch.delenv("OTEL_EXPORTER_OTLP_CERTIFICATE", raising=False)
+        monkeypatch.delenv("OTEL_EXPORTER_OTLP_CLIENT_KEY", raising=False)
+        monkeypatch.delenv("OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE", raising=False)
+
+        ca_cert = tmp_path / "ca.pem"
+        client_key = tmp_path / "client-key.pem"
+        client_cert = tmp_path / "client-cert.pem"
+        ca_cert.write_text("ca")
+        client_key.write_text("key")
+        client_cert.write_text("cert")
+
+        config_content = f"""service:
+  name: test-service
+
+arize:
+  endpoint: https://otlp.internal/v1/traces
+  certificate_file: {ca_cert}
+  client_key_file: {client_key}
+  client_certificate_file: {client_cert}
+"""
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(config_content)
+
+        from llmops._internal.telemetry import _bridge_tls_config_to_env
+        from llmops.config import load_config
+
+        config = load_config(config_path)
+        _bridge_tls_config_to_env(config)
+
+        import os
+
+        assert os.environ.get("OTEL_EXPORTER_OTLP_CERTIFICATE") == str(ca_cert)
+        assert os.environ.get("OTEL_EXPORTER_OTLP_CLIENT_KEY") == str(client_key)
+        assert os.environ.get("OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE") == str(
+            client_cert
+        )
+
+    def test_bridge_skips_none_values(
+        self,
+        tmp_path: "Path",
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """
+        GIVEN no TLS fields are specified in config
+        WHEN _bridge_tls_config_to_env is called
+        THEN no env vars are set (no errors, no side effects)
+        """
+        # Clear all env vars
+        monkeypatch.delenv("OTEL_EXPORTER_OTLP_CERTIFICATE", raising=False)
+        monkeypatch.delenv("OTEL_EXPORTER_OTLP_CLIENT_KEY", raising=False)
+        monkeypatch.delenv("OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE", raising=False)
+
+        config_content = """service:
+  name: test-service
+
+arize:
+  endpoint: https://otlp.internal/v1/traces
+"""
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(config_content)
+
+        from llmops._internal.telemetry import _bridge_tls_config_to_env
+        from llmops.config import load_config
+
+        config = load_config(config_path)
+        _bridge_tls_config_to_env(config)
+
+        import os
+
+        assert os.environ.get("OTEL_EXPORTER_OTLP_CERTIFICATE") is None
+        assert os.environ.get("OTEL_EXPORTER_OTLP_CLIENT_KEY") is None
+        assert os.environ.get("OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE") is None
+
+    def test_arize_otel_path_calls_bridge(
+        self,
+        tmp_path: "Path",
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """
+        GIVEN certificate_file is specified in config
+        AND arize-otel is available
+        WHEN _create_via_arize_otel is called
+        THEN _bridge_tls_config_to_env is called (env var is set)
+        """
+        # Clear env var
+        monkeypatch.delenv("OTEL_EXPORTER_OTLP_CERTIFICATE", raising=False)
+
+        cert_file = tmp_path / "ca-bundle.pem"
+        cert_file.write_text("dummy cert")
+
+        config_content = f"""service:
+  name: test-service
+
+arize:
+  endpoint: https://otlp.internal/v1/traces
+  certificate_file: {cert_file}
+  space_id: test-space
+  api_key: test-key
+"""
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(config_content)
+
+        from llmops.config import load_config
+
+        config = load_config(config_path)
+
+        # Mock arize.otel.register and Transport
+        mock_provider = MagicMock()
+        mock_register = MagicMock(return_value=mock_provider)
+        mock_transport = MagicMock()
+        mock_transport.HTTP = "HTTP"
+        mock_transport.GRPC = "GRPC"
+        mock_arize_otel = MagicMock()
+        mock_arize_otel.register = mock_register
+        mock_arize_otel.Transport = mock_transport
+
+        with patch.dict("sys.modules", {"arize.otel": mock_arize_otel}):
+            import importlib
+
+            import llmops._internal.telemetry as telemetry_module
+
+            importlib.reload(telemetry_module)
+
+            telemetry_module._create_via_arize_otel(config)
+
+            # Verify env var was set by the bridge
+            import os
+
+            assert os.environ.get("OTEL_EXPORTER_OTLP_CERTIFICATE") == str(cert_file)
 
 
 class TestProjectNameHeader:

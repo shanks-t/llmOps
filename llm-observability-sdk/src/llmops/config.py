@@ -41,6 +41,12 @@ class ArizeConfig:
     client_certificate_file: str | None = None  # Client cert for mTLS (.pem)
     # Mode selection: try arize.otel.register if available
     use_arize_otel: bool = True
+    # Transport protocol: "http" (default) or "grpc"
+    transport: str = "http"
+    # Span processor: True for BatchSpanProcessor (default), False for SimpleSpanProcessor
+    batch_spans: bool = True
+    # Debug mode: log spans to console (useful during development)
+    debug: bool = False
 
 
 @dataclass
@@ -152,6 +158,12 @@ def _parse_arize_config(data: dict[str, Any]) -> ArizeConfig:
     - client_key_file: OTEL_EXPORTER_OTLP_CLIENT_KEY
     - client_certificate_file: OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE
     """
+    # Validate transport value
+    transport = data.get("transport", "http")
+    if transport not in ("http", "grpc"):
+        logger.warning("Unknown transport '%s', defaulting to 'http'", transport)
+        transport = "http"
+
     return ArizeConfig(
         endpoint=data.get("endpoint", ""),
         project_name=data.get("project_name"),
@@ -171,6 +183,9 @@ def _parse_arize_config(data: dict[str, Any]) -> ArizeConfig:
             os.environ.get("OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE"),
         ),
         use_arize_otel=data.get("use_arize_otel", True),
+        transport=transport,
+        batch_spans=data.get("batch_spans", True),
+        debug=data.get("debug", False),
     )
 
 
