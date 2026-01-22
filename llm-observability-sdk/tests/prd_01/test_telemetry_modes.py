@@ -442,30 +442,59 @@ arize:
         config = load_config(config_path)
         assert config.arize.certificate_file == str(config_cert)
 
-    def test_mtls_config_fields(
+    def test_relative_path_resolved_from_config_dir(
         self,
         tmp_path: "Path",
     ) -> None:
         """
-        GIVEN client_key_file and client_certificate_file are specified
+        GIVEN certificate_file is a relative path
         WHEN config is loaded
-        THEN mTLS fields are parsed correctly
+        THEN the path is resolved relative to the config file's directory
         """
-        ca_cert = tmp_path / "ca.pem"
-        client_key = tmp_path / "client-key.pem"
-        client_cert = tmp_path / "client-cert.pem"
-        ca_cert.write_text("ca cert")
-        client_key.write_text("client key")
-        client_cert.write_text("client cert")
+        # Create a subdirectory structure
+        config_dir = tmp_path / "config"
+        certs_dir = config_dir / "certs"
+        config_dir.mkdir()
+        certs_dir.mkdir()
+
+        cert_file = certs_dir / "ca.pem"
+        cert_file.write_text("ca cert")
+
+        # Use relative path in config
+        config_content = """service:
+  name: test-service
+
+arize:
+  endpoint: https://otlp.arize.com/v1/traces
+  certificate_file: ./certs/ca.pem
+"""
+        config_path = config_dir / "config.yaml"
+        config_path.write_text(config_content)
+
+        from llmops.config import load_config
+
+        config = load_config(config_path)
+        # Should be resolved to absolute path from config file's directory
+        assert config.arize.certificate_file == str(cert_file)
+
+    def test_absolute_path_not_modified(
+        self,
+        tmp_path: "Path",
+    ) -> None:
+        """
+        GIVEN certificate_file is an absolute path
+        WHEN config is loaded
+        THEN the path is used as-is
+        """
+        cert_file = tmp_path / "ca.pem"
+        cert_file.write_text("ca cert")
 
         config_content = f"""service:
   name: test-service
 
 arize:
   endpoint: https://otlp.arize.com/v1/traces
-  certificate_file: {ca_cert}
-  client_key_file: {client_key}
-  client_certificate_file: {client_cert}
+  certificate_file: {cert_file}
 """
         config_path = tmp_path / "config.yaml"
         config_path.write_text(config_content)
@@ -473,9 +502,7 @@ arize:
         from llmops.config import load_config
 
         config = load_config(config_path)
-        assert config.arize.certificate_file == str(ca_cert)
-        assert config.arize.client_key_file == str(client_key)
-        assert config.arize.client_certificate_file == str(client_cert)
+        assert config.arize.certificate_file == str(cert_file)
 
 
 class TestCertificateValidation:
@@ -540,68 +567,6 @@ validation:
         # Should not raise - permissive mode
         config = load_config(config_path)
         assert config.arize.certificate_file == "/nonexistent/path/cert.pem"
-
-    def test_missing_client_key_fails_in_strict_mode(
-        self,
-        tmp_path: "Path",
-    ) -> None:
-        """
-        GIVEN client_key_file points to non-existent file
-        AND validation mode is strict
-        WHEN config is loaded
-        THEN ConfigurationError is raised
-        """
-        config_content = """service:
-  name: test-service
-
-arize:
-  endpoint: https://otlp.arize.com/v1/traces
-  client_key_file: /nonexistent/path/key.pem
-
-validation:
-  mode: strict
-"""
-        config_path = tmp_path / "config.yaml"
-        config_path.write_text(config_content)
-
-        from llmops.config import load_config
-        from llmops.exceptions import ConfigurationError
-
-        with pytest.raises(ConfigurationError) as exc_info:
-            load_config(config_path)
-
-        assert "Client key file not found" in str(exc_info.value)
-
-    def test_missing_client_cert_fails_in_strict_mode(
-        self,
-        tmp_path: "Path",
-    ) -> None:
-        """
-        GIVEN client_certificate_file points to non-existent file
-        AND validation mode is strict
-        WHEN config is loaded
-        THEN ConfigurationError is raised
-        """
-        config_content = """service:
-  name: test-service
-
-arize:
-  endpoint: https://otlp.arize.com/v1/traces
-  client_certificate_file: /nonexistent/path/cert.pem
-
-validation:
-  mode: strict
-"""
-        config_path = tmp_path / "config.yaml"
-        config_path.write_text(config_content)
-
-        from llmops.config import load_config
-        from llmops.exceptions import ConfigurationError
-
-        with pytest.raises(ConfigurationError) as exc_info:
-            load_config(config_path)
-
-        assert "Client certificate file not found" in str(exc_info.value)
 
 
 class TestTLSBridgeToEnvVars:
@@ -687,54 +652,6 @@ arize:
         # Should keep existing value, not override
         assert os.environ.get("OTEL_EXPORTER_OTLP_CERTIFICATE") == existing_cert
 
-    def test_bridge_sets_all_mtls_env_vars(
-        self,
-        tmp_path: "Path",
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """
-        GIVEN all mTLS fields are specified in config
-        WHEN _bridge_tls_config_to_env is called
-        THEN all three OTEL env vars are set
-        """
-        # Clear all env vars
-        monkeypatch.delenv("OTEL_EXPORTER_OTLP_CERTIFICATE", raising=False)
-        monkeypatch.delenv("OTEL_EXPORTER_OTLP_CLIENT_KEY", raising=False)
-        monkeypatch.delenv("OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE", raising=False)
-
-        ca_cert = tmp_path / "ca.pem"
-        client_key = tmp_path / "client-key.pem"
-        client_cert = tmp_path / "client-cert.pem"
-        ca_cert.write_text("ca")
-        client_key.write_text("key")
-        client_cert.write_text("cert")
-
-        config_content = f"""service:
-  name: test-service
-
-arize:
-  endpoint: https://otlp.internal/v1/traces
-  certificate_file: {ca_cert}
-  client_key_file: {client_key}
-  client_certificate_file: {client_cert}
-"""
-        config_path = tmp_path / "config.yaml"
-        config_path.write_text(config_content)
-
-        from llmops._internal.telemetry import _bridge_tls_config_to_env
-        from llmops.config import load_config
-
-        config = load_config(config_path)
-        _bridge_tls_config_to_env(config)
-
-        import os
-
-        assert os.environ.get("OTEL_EXPORTER_OTLP_CERTIFICATE") == str(ca_cert)
-        assert os.environ.get("OTEL_EXPORTER_OTLP_CLIENT_KEY") == str(client_key)
-        assert os.environ.get("OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE") == str(
-            client_cert
-        )
-
     def test_bridge_skips_none_values(
         self,
         tmp_path: "Path",
@@ -745,10 +662,8 @@ arize:
         WHEN _bridge_tls_config_to_env is called
         THEN no env vars are set (no errors, no side effects)
         """
-        # Clear all env vars
+        # Clear env var
         monkeypatch.delenv("OTEL_EXPORTER_OTLP_CERTIFICATE", raising=False)
-        monkeypatch.delenv("OTEL_EXPORTER_OTLP_CLIENT_KEY", raising=False)
-        monkeypatch.delenv("OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE", raising=False)
 
         config_content = """service:
   name: test-service
@@ -768,8 +683,6 @@ arize:
         import os
 
         assert os.environ.get("OTEL_EXPORTER_OTLP_CERTIFICATE") is None
-        assert os.environ.get("OTEL_EXPORTER_OTLP_CLIENT_KEY") is None
-        assert os.environ.get("OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE") is None
 
     def test_arize_otel_path_calls_bridge(
         self,

@@ -21,7 +21,7 @@ arize:
   # Required: OTLP endpoint for trace export
   # For Arize cloud: https://otlp.arize.com/v1/traces
   # For Phoenix local: http://localhost:6006/v1/traces
-  # For self-hosted Arize: https://arize-otlp.your-cluster.internal/v1/traces
+  # For self-hosted Arize: https://arize-app.your-cluster.internal/v1/traces
   endpoint: ${ARIZE_ENDPOINT}
 
   # Optional: Arize authentication (required for Arize cloud)
@@ -45,15 +45,10 @@ arize:
   # Useful during development to see what spans are being created
   debug: false
 
-  # Optional: TLS certificate configuration for self-hosted deployments
-  # These can also be set via standard OTEL environment variables:
-  #   - OTEL_EXPORTER_OTLP_CERTIFICATE
-  #   - OTEL_EXPORTER_OTLP_CLIENT_KEY
-  #   - OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE
-  #
-  # certificate_file: /path/to/ca-bundle.pem        # CA cert for server verification
-  # client_key_file: /path/to/client-key.pem       # Client private key (mTLS)
-  # client_certificate_file: /path/to/client.pem   # Client certificate (mTLS)
+  # Optional: TLS certificate for self-hosted HTTPS endpoints
+  # Path can be relative (resolved from this config file) or absolute
+  # See "TLS Setup for Self-Hosted Arize" section below
+  # certificate_file: ./certs/arize-ca.pem
 
   # Optional: TracerProvider creation mode (default: true)
   # - true: Use arize.otel.register if arize-otel package is installed
@@ -84,10 +79,40 @@ validation:
 
 
 # =============================================================================
+# TLS Setup for Self-Hosted Arize (HTTPS with Self-Signed Certificate)
+# =============================================================================
+#
+# If your self-hosted Arize uses a self-signed certificate, you need to provide
+# the certificate file so the SDK can verify the server's identity.
+#
+# PREREQUISITE: Extract the certificate from your Arize endpoint
+# ---------------------------------------------------------------
+# Run this command once to extract the server certificate:
+#
+#   echo | openssl s_client -showcerts -connect <your-arize-host>:443 -prexit > ./certs/arize-ca.pem
+#
+# Example:
+#   mkdir -p ./certs
+#   echo | openssl s_client -showcerts -connect arize-app.my-cluster.internal:443 -prexit > ./certs/arize-ca.pem
+#
+# Then reference it in your config:
+#
+#   arize:
+#     endpoint: https://arize-app.my-cluster.internal/v1/traces
+#     certificate_file: ./certs/arize-ca.pem   # Relative to this config file
+#
+# Alternative: Use environment variable
+# -------------------------------------
+# You can also set the certificate path via environment variable:
+#
+#   export OTEL_EXPORTER_OTLP_CERTIFICATE=/path/to/arize-ca.pem
+#
+# The SDK will use this if certificate_file is not specified in config.
+
+
+# =============================================================================
 # Example Configurations
 # =============================================================================
-# Below are example configurations for common scenarios. Uncomment and modify
-# as needed, or use as reference for your own configuration.
 
 # -----------------------------------------------------------------------------
 # Example: Local Development with Phoenix
@@ -122,120 +147,37 @@ validation:
 #   space_id: ${ARIZE_SPACE_ID}
 #   api_key: ${ARIZE_API_KEY}
 #   project_name: ${ARIZE_PROJECT_NAME}
-#   transport: http         # HTTP is reliable through most corporate proxies
-#   batch_spans: true       # Non-blocking batch export for production
+#   transport: http
+#   batch_spans: true
 #   debug: false
-#   use_arize_otel: true    # Use arize.otel.register
+#   use_arize_otel: true
 #
 # instrumentation:
 #   google_adk: true
 #   google_genai: true
 #
 # privacy:
-#   capture_content: false  # Don't log sensitive content in production
+#   capture_content: false
 #
 # validation:
-#   mode: strict            # Fail fast on configuration errors
+#   mode: strict
 
 # -----------------------------------------------------------------------------
-# Example: Self-Hosted Arize AX with TLS Certificate (.pem file)
+# Example: Self-Hosted Arize with TLS Certificate
 # -----------------------------------------------------------------------------
-# For self-hosted Arize AX deployments that use enterprise-issued certificates
-# or self-signed certificates, you need to provide the CA certificate.
-#
-# To extract the certificate from your endpoint:
-#   echo | openssl s_client -showcerts -connect arize-otlp.my-cluster.internal:443 > cert.pem
-#
 # service:
 #   name: secure-llm-service
 #   version: "1.0.0"
 #
 # arize:
-#   # Self-hosted Arize AX endpoint (single endpoint mode from v10.4.0+)
 #   endpoint: https://arize-app.my-cluster.internal/v1/traces
 #   space_id: ${ARIZE_SPACE_ID}
 #   api_key: ${ARIZE_API_KEY}
 #   project_name: my-project
-#
-#   # TLS: CA certificate for server verification
-#   # This .pem file contains the root CA that signed your cluster's certificate
-#   certificate_file: /etc/ssl/certs/my-cluster-ca.pem
-#
-#   # Alternatively, set via environment variable:
-#   # export OTEL_EXPORTER_OTLP_CERTIFICATE=/etc/ssl/certs/my-cluster-ca.pem
-#
+#   certificate_file: ./certs/arize-ca.pem   # Relative path from this config file
 #   transport: http
 #   batch_spans: true
-#   use_arize_otel: true    # SDK bridges certificate_file to OTEL env vars
-#
-# validation:
-#   mode: strict
-
-# -----------------------------------------------------------------------------
-# Example: Self-Hosted Arize AX with mTLS (Mutual TLS)
-# -----------------------------------------------------------------------------
-# For deployments requiring client certificate authentication.
-#
-# service:
-#   name: mtls-llm-service
-#   version: "1.0.0"
-#
-# arize:
-#   endpoint: https://arize-otlp.my-cluster.internal/v1/traces
-#   space_id: ${ARIZE_SPACE_ID}
-#   api_key: ${ARIZE_API_KEY}
-#   project_name: my-project
-#
-#   # TLS certificates for mTLS
-#   certificate_file: /etc/ssl/certs/cluster-ca.pem           # CA cert
-#   client_key_file: /etc/ssl/private/client-key.pem          # Client private key
-#   client_certificate_file: /etc/ssl/certs/client-cert.pem   # Client certificate
-#
-#   transport: http
-#   batch_spans: true
-#
-# validation:
-#   mode: strict
-
-# -----------------------------------------------------------------------------
-# Example: Self-Hosted with Four-Endpoint Configuration (Legacy)
-# -----------------------------------------------------------------------------
-# Older Arize AX deployments may use four separate endpoints.
-#
-# service:
-#   name: legacy-llm-service
-#   version: "1.0.0"
-#
-# arize:
-#   # Use the OTLP-specific endpoint for traces
-#   endpoint: https://arize-otlp.my-cluster.internal/v1/traces
-#   space_id: ${ARIZE_SPACE_ID}
-#   api_key: ${ARIZE_API_KEY}
-#   project_name: my-project
-#   certificate_file: /etc/ssl/certs/cluster-ca.pem
-#   transport: http
-#
-# validation:
-#   mode: strict
-
-# -----------------------------------------------------------------------------
-# Example: gRPC Transport (requires additional dependency)
-# -----------------------------------------------------------------------------
-# gRPC transport may offer better performance but requires:
-#   pip install opentelemetry-exporter-otlp-proto-grpc
-#
-# service:
-#   name: grpc-llm-service
-#   version: "1.0.0"
-#
-# arize:
-#   endpoint: https://arize-app.my-cluster.internal/v1
-#   space_id: ${ARIZE_SPACE_ID}
-#   api_key: ${ARIZE_API_KEY}
-#   project_name: my-project
-#   certificate_file: /etc/ssl/certs/cluster-ca.pem
-#   transport: grpc         # Use gRPC transport
-#   batch_spans: true
+#   use_arize_otel: true
 #
 # validation:
 #   mode: strict
@@ -253,23 +195,20 @@ validation:
 # =============================================================================
 # Environment Variables Reference
 # =============================================================================
-# The SDK reads these environment variables:
 #
-# | Variable                             | Used For                                    |
-# |--------------------------------------|---------------------------------------------|
-# | LLMOPS_CONFIG_PATH                   | Default config file path if not passed      |
-# | ARIZE_SPACE_ID                       | Arize authentication                        |
-# | ARIZE_API_KEY                        | Arize authentication                        |
-# | ARIZE_ENDPOINT                       | OTLP endpoint URL                           |
-# | ARIZE_PROJECT_NAME                   | Project name in Arize                       |
-# | OTEL_EXPORTER_OTLP_CERTIFICATE       | Fallback for certificate_file               |
-# | OTEL_EXPORTER_OTLP_CLIENT_KEY        | Fallback for client_key_file                |
-# | OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE| Fallback for client_certificate_file        |
+# | Variable                        | Used For                              |
+# |---------------------------------|---------------------------------------|
+# | LLMOPS_CONFIG_PATH              | Default config file path if not passed |
+# | ARIZE_SPACE_ID                  | Arize authentication                  |
+# | ARIZE_API_KEY                   | Arize authentication                  |
+# | ARIZE_ENDPOINT                  | OTLP endpoint URL                     |
+# | ARIZE_PROJECT_NAME              | Project name in Arize                 |
+# | OTEL_EXPORTER_OTLP_CERTIFICATE  | Fallback for certificate_file         |
 #
-# Example .env file for self-hosted Arize AX:
-# -------------------------------------------
+# Example .env file:
+# ------------------
 # ARIZE_ENDPOINT=https://arize-app.my-cluster.internal/v1/traces
 # ARIZE_SPACE_ID=your-space-id
 # ARIZE_API_KEY=your-api-key
 # ARIZE_PROJECT_NAME=my-project
-# OTEL_EXPORTER_OTLP_CERTIFICATE=/etc/ssl/certs/cluster-ca.pem
+# OTEL_EXPORTER_OTLP_CERTIFICATE=/path/to/certs/arize-ca.pem

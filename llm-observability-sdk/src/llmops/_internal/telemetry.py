@@ -74,22 +74,6 @@ def _bridge_tls_config_to_env(config: LLMOpsConfig) -> None:
         logger.debug(
             "Set OTEL_EXPORTER_OTLP_CERTIFICATE=%s", config.arize.certificate_file
         )
-    if config.arize.client_key_file:
-        os.environ.setdefault(
-            "OTEL_EXPORTER_OTLP_CLIENT_KEY", config.arize.client_key_file
-        )
-        logger.debug(
-            "Set OTEL_EXPORTER_OTLP_CLIENT_KEY=%s", config.arize.client_key_file
-        )
-    if config.arize.client_certificate_file:
-        os.environ.setdefault(
-            "OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE",
-            config.arize.client_certificate_file,
-        )
-        logger.debug(
-            "Set OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE=%s",
-            config.arize.client_certificate_file,
-        )
 
 
 def _create_via_arize_otel(config: LLMOpsConfig) -> TracerProvider:
@@ -228,8 +212,6 @@ def _create_http_exporter(
         endpoint=config.arize.endpoint,
         headers=headers if headers else None,
         certificate_file=config.arize.certificate_file,
-        client_key_file=config.arize.client_key_file,
-        client_certificate_file=config.arize.client_certificate_file,
     )
 
 

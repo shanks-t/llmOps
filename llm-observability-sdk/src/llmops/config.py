@@ -35,10 +35,10 @@ class ArizeConfig:
     project_name: str | None = None
     api_key: str | None = None
     space_id: str | None = None
-    # TLS certificate configuration (can also be set via OTEL env vars)
-    certificate_file: str | None = None  # CA cert for server verification (.pem)
-    client_key_file: str | None = None  # Client private key for mTLS (.pem)
-    client_certificate_file: str | None = None  # Client cert for mTLS (.pem)
+    # TLS certificate for server verification (.pem)
+    # Can be relative path (resolved from config file) or absolute path
+    # Fallback: OTEL_EXPORTER_OTLP_CERTIFICATE env var
+    certificate_file: str | None = None
     # Mode selection: try arize.otel.register if available
     use_arize_otel: bool = True
     # Transport protocol: "http" (default) or "grpc"
@@ -150,13 +150,17 @@ def _parse_service_config(data: dict[str, Any]) -> ServiceConfig:
     )
 
 
-def _parse_arize_config(data: dict[str, Any]) -> ArizeConfig:
+def _parse_arize_config(
+    data: dict[str, Any], config_dir: Path | None = None
+) -> ArizeConfig:
     """Parse Arize configuration section.
 
-    TLS certificate paths support env var fallbacks:
+    Args:
+        data: Arize configuration dictionary.
+        config_dir: Directory of the config file for resolving relative paths.
+
+    TLS certificate path supports env var fallback:
     - certificate_file: OTEL_EXPORTER_OTLP_CERTIFICATE
-    - client_key_file: OTEL_EXPORTER_OTLP_CLIENT_KEY
-    - client_certificate_file: OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE
     """
     # Validate transport value
     transport = data.get("transport", "http")
@@ -164,24 +168,22 @@ def _parse_arize_config(data: dict[str, Any]) -> ArizeConfig:
         logger.warning("Unknown transport '%s', defaulting to 'http'", transport)
         transport = "http"
 
+    # Resolve certificate_file path (relative to config file or absolute)
+    certificate_file = data.get(
+        "certificate_file",
+        os.environ.get("OTEL_EXPORTER_OTLP_CERTIFICATE"),
+    )
+    if certificate_file and config_dir:
+        cert_path = Path(certificate_file)
+        if not cert_path.is_absolute():
+            certificate_file = str(config_dir / cert_path)
+
     return ArizeConfig(
         endpoint=data.get("endpoint", ""),
         project_name=data.get("project_name"),
         api_key=data.get("api_key"),
         space_id=data.get("space_id"),
-        # TLS: config file values override env vars
-        certificate_file=data.get(
-            "certificate_file",
-            os.environ.get("OTEL_EXPORTER_OTLP_CERTIFICATE"),
-        ),
-        client_key_file=data.get(
-            "client_key_file",
-            os.environ.get("OTEL_EXPORTER_OTLP_CLIENT_KEY"),
-        ),
-        client_certificate_file=data.get(
-            "client_certificate_file",
-            os.environ.get("OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE"),
-        ),
+        certificate_file=certificate_file,
         use_arize_otel=data.get("use_arize_otel", True),
         transport=transport,
         batch_spans=data.get("batch_spans", True),
@@ -246,25 +248,13 @@ def _validate_config(config: LLMOpsConfig) -> list[str]:
     if not config.arize.endpoint:
         errors.append("arize.endpoint is required")
 
-    # Validate TLS certificate files exist (strict mode only)
+    # Validate TLS certificate file exists (strict mode only)
     # In permissive mode, these are logged as warnings during telemetry setup
     if config.arize.certificate_file:
         cert_path = Path(config.arize.certificate_file)
         if not cert_path.exists():
             errors.append(
                 f"Certificate file not found: {config.arize.certificate_file}"
-            )
-
-    if config.arize.client_key_file:
-        key_path = Path(config.arize.client_key_file)
-        if not key_path.exists():
-            errors.append(f"Client key file not found: {config.arize.client_key_file}")
-
-    if config.arize.client_certificate_file:
-        client_cert_path = Path(config.arize.client_certificate_file)
-        if not client_cert_path.exists():
-            errors.append(
-                f"Client certificate file not found: {config.arize.client_certificate_file}"
             )
 
     return errors
@@ -308,9 +298,11 @@ def load_config(path: Path, strict: bool | None = None) -> LLMOpsConfig:
         raise
 
     # Parse configuration sections
+    # Pass config file directory for resolving relative paths
+    config_dir = path.parent
     config = LLMOpsConfig(
         service=_parse_service_config(data.get("service", {})),
-        arize=_parse_arize_config(data.get("arize", {})),
+        arize=_parse_arize_config(data.get("arize", {}), config_dir=config_dir),
         instrumentation=_parse_instrumentation_config(data.get("instrumentation", {})),
         privacy=_parse_privacy_config(data.get("privacy", {})),
         validation=_parse_validation_config(data.get("validation", {})),

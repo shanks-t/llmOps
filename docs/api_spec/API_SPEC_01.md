@@ -108,10 +108,9 @@ arize:
   batch_spans: true                   # true (default) or false
   debug: false                        # Log spans to console (default: false)
 
-  # TLS certificate configuration for self-hosted deployments
-  certificate_file: "/path/to/ca.pem"           # CA cert for server verification
-  client_key_file: "/path/to/client-key.pem"    # Client private key (mTLS)
-  client_certificate_file: "/path/to/client.pem" # Client certificate (mTLS)
+  # TLS certificate for self-hosted HTTPS endpoints
+  # Path can be relative (resolved from config file) or absolute
+  certificate_file: "./certs/ca.pem"
 
   # TracerProvider creation mode
   use_arize_otel: true                # Use arize.otel.register if available
@@ -154,8 +153,6 @@ Environment variable names will follow the `LLMOPS_` prefix. Standard OpenTeleme
 |----------|---------|
 | `LLMOPS_CONFIG_PATH` | Path to `llmops.yaml` or `llmops.yml` |
 | `OTEL_EXPORTER_OTLP_CERTIFICATE` | Fallback for `certificate_file` (CA cert) |
-| `OTEL_EXPORTER_OTLP_CLIENT_KEY` | Fallback for `client_key_file` (mTLS) |
-| `OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE` | Fallback for `client_certificate_file` (mTLS) |
 
 ---
 
