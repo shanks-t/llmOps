@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import atexit
 import logging
 import os
 from pathlib import Path
@@ -32,7 +33,8 @@ def instrument(config_path: str | Path | None = None) -> TracerProvider:
     2. Loads and validates configuration
     3. Creates TracerProvider with OTLP exporter
     4. Applies auto-instrumentation for enabled frameworks
-    5. Returns the configured provider
+    5. Registers atexit handler to flush spans on process exit
+    6. Returns the configured provider
 
     Args:
         config_path: Optional path to llmops.yaml (preferred) or llmops.yml.
@@ -44,6 +46,13 @@ def instrument(config_path: str | Path | None = None) -> TracerProvider:
     Raises:
         ConfigurationError: If config is missing or invalid (strict mode only).
                            In permissive mode, returns a no-op tracer provider.
+
+    Note:
+        An atexit handler is automatically registered to call provider.shutdown()
+        when the process exits. This ensures buffered spans are flushed even if
+        you don't call shutdown() explicitly. For long-running servers, you may
+        still call provider.shutdown() in your cleanup code—it's safe to call
+        multiple times.
 
     Examples:
         # Using environment variable
@@ -73,11 +82,15 @@ def instrument(config_path: str | Path | None = None) -> TracerProvider:
     # Step 3: Create TracerProvider
     try:
         provider = create_tracer_provider(config)
+        # Register automatic shutdown to flush spans on process exit
+        atexit.register(provider.shutdown)
     except Exception as e:
         if config.is_strict:
             raise ConfigurationError(f"Failed to create tracer provider: {e}")
         logger.warning("Failed to create tracer provider, using no-op: %s", e)
-        return create_noop_tracer_provider()
+        noop_provider = create_noop_tracer_provider()
+        atexit.register(noop_provider.shutdown)
+        return noop_provider
 
     # Step 4: Apply auto-instrumentation
     # Instrumentation failures are always swallowed (logged internally)

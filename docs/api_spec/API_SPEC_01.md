@@ -1,7 +1,7 @@
 # PRD_01 — API Specification
 
-**Version:** 0.1
-**Date:** 2026-01-21
+**Version:** 0.2
+**Date:** 2026-01-22
 **Status:** Draft
 
 ---
@@ -56,8 +56,16 @@ def instrument(
         - Configures Arize telemetry (Phoenix or Arize AX).
         - Sets the global tracer provider.
         - Auto-instruments Google ADK and Google GenAI.
+        - Registers an atexit handler to flush spans on process exit.
         - Telemetry failures never break business logic.
         - In permissive mode, returns a no-op tracer provider on config errors.
+
+    Note:
+        An atexit handler is automatically registered to call provider.shutdown()
+        when the process exits. This ensures buffered spans are flushed even in
+        scripts without explicit lifecycle management. For long-running servers,
+        you may still call provider.shutdown() in your cleanup code—it's safe
+        to call multiple times.
     """
 ```
 
@@ -171,4 +179,4 @@ Environment variable names will follow the `LLMOPS_` prefix. Standard OpenTeleme
 ---
 
 **Document Owner:** Platform Team
-**Last Updated:** 2026-01-21
+**Last Updated:** 2026-01-22

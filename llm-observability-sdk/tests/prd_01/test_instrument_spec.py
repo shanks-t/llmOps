@@ -10,6 +10,7 @@ Requirements covered:
 - A5: instrument() accepts a config path parameter
 - A6: instrument() supports config path override via env var
 - A7: instrument() accepts llmops.yaml (preferred) and llmops.yml (supported)
+- Lifecycle: instrument() registers atexit handler for automatic span flushing
 """
 
 from __future__ import annotations
@@ -157,3 +158,48 @@ class TestInstrumentFileExtensions:
         provider = llmops_module.instrument(config_path=config_path)
 
         assert provider is not None
+
+
+class TestInstrumentLifecycle:
+    """Tests for automatic lifecycle management."""
+
+    def test_instrument_registers_atexit_handler(
+        self,
+        valid_config_file: "Path",
+        llmops_module: Any,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """
+        PRD: PRD_01
+        API: API_SPEC_01.instrument()
+
+        GIVEN a valid config file exists
+        WHEN llmops.instrument() is called
+        THEN an atexit handler is registered to shutdown the provider
+
+        This ensures spans are flushed on process exit even if the caller
+        doesn't explicitly call provider.shutdown().
+        """
+        import atexit
+        import sys
+
+        registered_funcs: list[Any] = []
+        original_register = atexit.register
+
+        def mock_register(func: Any, *args: Any, **kwargs: Any) -> Any:
+            registered_funcs.append(func)
+            return original_register(func, *args, **kwargs)
+
+        # Patch atexit.register in the instrument module's namespace
+        instrument_module = sys.modules["llmops.instrument"]
+        monkeypatch.setattr(instrument_module.atexit, "register", mock_register)
+
+        provider = llmops_module.instrument(config_path=valid_config_file)
+
+        # At least one atexit handler should be registered for provider.shutdown
+        assert len(registered_funcs) >= 1, (
+            "Expected at least one atexit handler to be registered"
+        )
+        assert provider.shutdown in registered_funcs, (
+            "atexit handler should include provider.shutdown"
+        )
