@@ -1,9 +1,9 @@
 # Platform Registry & Instrumentation Interface — Architecture Analysis
 
-**Version:** 0.1
+**Version:** 0.2
 **Date:** 2026-01-22
-**Status:** Draft
-**Purpose:** Explore architectural options for PRD_02 implementation
+**Status:** Accepted
+**Purpose:** Document architectural decisions for PRD_01 multi-platform implementation
 
 ---
 
@@ -15,6 +15,10 @@ This document analyzes different approaches for implementing:
 2. **Instrumentation Interface** — How platform modules implement the `instrument()` contract
 
 We evaluate each approach against criteria including developer experience, extensibility, type safety, and alignment with Python ecosystem standards.
+
+**Decision Summary:**
+- Platform Registry: **Pattern E (Hybrid)** — Static modules with lazy loading
+- Instrumentation Interface: **Pattern B (Protocol)** — Structural typing
 
 ---
 
@@ -115,6 +119,8 @@ def get_platform(name: str):
 | Standard Python pattern | Type checking is weaker |
 | Supports optional dependencies naturally | Users must know platform names as strings |
 
+**Performance Note:** Entry point scanning overhead can be mitigated by caching `entry_points()` results. This keeps lazy loading effective for subsequent accesses.
+
 **Best for:** SDKs designed for ecosystem extensibility where third parties add backends.
 
 ---
@@ -167,6 +173,8 @@ def get_platform_from_config(config_path: str):
 | Config is the source of truth | Harder to catch errors at import time |
 | Easy environment-based switching | IDE can't help with platform-specific options |
 | Familiar pattern from Django/Celery | Config validation more complex |
+
+**Context Note:** "Platform choice hidden in config" can be beneficial in ops-driven environments where platform selection is an operational concern rather than a development concern. The trade-off evaluation depends on the target use case.
 
 **Best for:** Applications where platform selection is an operational concern, not a development concern.
 
@@ -223,20 +231,14 @@ def instrument(
 
 ---
 
-### 2.5 Pattern E: Hybrid (Recommended)
+### 2.5 Pattern E: Hybrid (Selected)
 
-**Approach:** Combine static modules (Pattern A) with lazy loading and optional entry point extension.
+**Approach:** Static modules with lazy loading. Entry points deferred for future extensibility.
 
 ```python
 # Primary API: Static modules (great DX)
 import llmops
 llmops.arize.instrument(config_path="llmops.yaml")
-
-# Alternative: Factory for dynamic selection
-llmops.instrument(platform="arize", config_path="llmops.yaml")
-
-# Extension: Entry points for third-party platforms
-llmops.platforms["custom"].instrument(...)
 ```
 
 **Implementation:**
@@ -259,18 +261,7 @@ def __getattr__(name: str):
     raise AttributeError(f"module 'llmops' has no attribute '{name}'")
 
 def __dir__():
-    return ["arize", "mlflow", "instrument", "ConfigurationError", ...]
-
-# Optional: Dynamic platform access
-class _PlatformRegistry:
-    def __getitem__(self, name: str):
-        # Check built-in platforms first
-        if name in ("arize", "mlflow"):
-            return __getattr__(name)
-        # Fall back to entry points for third-party
-        return _load_entry_point_platform(name)
-
-platforms = _PlatformRegistry()
+    return ["arize", "mlflow", "ConfigurationError", "__version__"]
 ```
 
 **Examples in Industry:**
@@ -283,9 +274,11 @@ platforms = _PlatformRegistry()
 | Pros | Cons |
 |------|------|
 | Best DX for common platforms (static modules) | More complex implementation |
-| Extensible for edge cases (entry points) | Two ways to do the same thing |
-| Excellent IDE support for built-in platforms | Documentation must cover both patterns |
-| Third parties can extend without forking | |
+| Excellent IDE support for built-in platforms | Entry points add complexity (deferred) |
+| Lazy loading avoids importing unused dependencies | |
+| Third parties can extend via entry points (future) | |
+
+**Decision:** Selected for PRD_01. Static modules (`llmops.arize`, `llmops.mlflow`) are the **primary and only** public API. The factory pattern (`llmops.instrument(platform="arize")`) is **not exposed** — this eliminates the "two ways to do the same thing" documentation burden.
 
 **Best for:** SDKs that want excellent DX for common cases while remaining extensible.
 
@@ -358,15 +351,14 @@ class ArizePlatform(Platform):
 
 ---
 
-### 3.2 Pattern B: Protocol (Structural Typing)
+### 3.2 Pattern B: Protocol (Selected)
 
 **Approach:** Define a Protocol that describes the interface without inheritance.
 
 ```python
 # llmops/_platforms/_base.py
-from typing import Protocol, runtime_checkable
+from typing import Protocol
 
-@runtime_checkable
 class Platform(Protocol):
     """Protocol for platform implementations."""
 
@@ -405,10 +397,17 @@ class ArizePlatform:  # No inheritance required
 
 | Pros | Cons |
 |------|------|
-| No inheritance required (duck typing) | `@runtime_checkable` has performance cost |
-| Better for composition | Less obvious what to implement |
-| Easier to mock in tests | Runtime checking is optional |
-| More Pythonic (duck typing) | IDE support varies |
+| No inheritance required (duck typing) | Less obvious what to implement |
+| Better for composition | Runtime checking requires decorator |
+| Easier to mock in tests | IDE support varies |
+| More Pythonic (duck typing) | |
+
+**Note on `@runtime_checkable`:** The `@runtime_checkable` decorator enables `isinstance()` checks against the Protocol, but has a performance cost **only when those checks are actually used**. For this SDK:
+- Omit `@runtime_checkable` unless `isinstance()` checks are needed
+- If added, avoid using `isinstance()` in hot paths
+- Type checkers (mypy, pyright) validate Protocol conformance statically without the decorator
+
+**Decision:** Selected for PRD_01. Protocol without `@runtime_checkable` provides the best balance of type safety and flexibility.
 
 ---
 
@@ -537,14 +536,14 @@ class PlatformFactory:
 | B: Entry Points | Fair | Poor | Excellent | Medium | Good for plugin ecosystems |
 | C: Config-Driven | Good | Fair | Good | Medium | Good for ops-driven selection |
 | D: Factory + Enum | Good | Good | Fair | Low | Good for fixed platform set |
-| **E: Hybrid** | **Excellent** | **Excellent** | **Good** | **Medium** | **Recommended** |
+| **E: Hybrid** | **Excellent** | **Excellent** | **Good** | **Medium** | **Selected** |
 
 ### 4.2 Instrumentation Interface Patterns
 
 | Pattern | Type Safety | Testability | Simplicity | Flexibility | Recommendation |
 |---------|-------------|-------------|------------|-------------|----------------|
 | A: ABC | Excellent | Good | Good | Fair | Good for formal contracts |
-| **B: Protocol** | **Excellent** | **Excellent** | **Good** | **Excellent** | **Recommended** |
+| **B: Protocol** | **Excellent** | **Excellent** | **Good** | **Excellent** | **Selected** |
 | C: Functions | Poor | Excellent | Excellent | Poor | Good for simple cases |
 | D: Decorators | Fair | Fair | Good | Good | Good for plugin systems |
 | E: DI Factory | Excellent | Excellent | Poor | Excellent | Good for complex systems |
@@ -628,9 +627,7 @@ dynamodb = boto3.resource('dynamodb')
 
 ---
 
-## 6. Recommendation for llmops
-
-Based on the analysis, I recommend:
+## 6. Final Decisions for llmops
 
 ### 6.1 Platform Registry: Hybrid (Pattern E)
 
@@ -641,23 +638,30 @@ llmops.arize.instrument(config_path="llmops.yaml")
 ```
 
 **Rationale:**
-- Excellent IDE support for the 2-3 platforms we'll ship
+- Excellent IDE support for the platforms we ship
 - Lazy loading avoids importing unused platform dependencies
 - Entry points can be added later for third-party platforms without breaking the primary API
+- Factory pattern (`llmops.instrument(platform="arize")`) is **not exposed** — single clear API path
 
 ### 6.2 Instrumentation Interface: Protocol (Pattern B)
 
 **Interface:**
 ```python
-@runtime_checkable
 class Platform(Protocol):
     @property
     def name(self) -> str: ...
 
-    def instrument(
-        self,
-        config_path: str | Path | None = None,
-    ) -> TracerProvider: ...
+    @property
+    def config_section(self) -> str: ...
+
+    @property
+    def install_extra(self) -> str: ...
+
+    def check_dependencies(self) -> None: ...
+
+    def create_tracer_provider(self, config: LLMOpsConfig) -> TracerProvider: ...
+
+    def get_instrumentor_registry(self) -> list[tuple[str, str, str]]: ...
 ```
 
 **Rationale:**
@@ -665,50 +669,27 @@ class Platform(Protocol):
 - Excellent testability (easy to mock)
 - Type checkers understand Protocols well
 - Flexible for future evolution
+- `@runtime_checkable` omitted (not needed; avoids performance concerns)
 
-### 6.3 Implementation Sketch
+### 6.3 Additional Decisions
 
-```python
-# llmops/__init__.py
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from llmops import arize as arize
-
-def __getattr__(name: str):
-    if name == "arize":
-        from llmops import arize
-        return arize
-    raise AttributeError(f"module 'llmops' has no attribute '{name}'")
-
-# llmops/_platforms/_base.py
-from typing import Protocol
-
-class Platform(Protocol):
-    @property
-    def name(self) -> str: ...
-
-    def instrument(self, config_path=None) -> TracerProvider: ...
-
-# llmops/arize.py
-from llmops._platforms.arize import ArizePlatform
-
-_platform = ArizePlatform()
-
-def instrument(config_path=None):
-    return _platform.instrument(config_path)
-```
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| Config validation | Each platform validates its own section | Platform isolation |
+| Instrumentor runner | Shared infrastructure | Reduces duplication; platforms provide registry |
+| Entry points | Deferred to future version | Not needed for POC |
+| MLflow scope | Skeleton/stub | Validates extensibility |
 
 ---
 
-## 7. Open Questions
+## 7. Resolved Questions
 
-| # | Question | Impact |
-|---|----------|--------|
-| 1 | Should we support both `llmops.arize.instrument()` and `llmops.instrument(platform="arize")`? | API surface area |
-| 2 | Should entry points be supported in v0.2 or deferred? | Scope |
-| 3 | How do we handle platform-specific configuration validation? | Config complexity |
-| 4 | Should platforms share an instrumentor runner or each have their own? | Code reuse |
+| # | Question | Resolution |
+|---|----------|------------|
+| 1 | Should we support both `llmops.arize.instrument()` and `llmops.instrument(platform="arize")`? | **No.** Namespaced API only (`llmops.arize.instrument()`). Single clear path eliminates documentation burden. |
+| 2 | Should entry points be supported in v0.2 or deferred? | **Deferred.** Not needed for POC. Can be added later without breaking changes. |
+| 3 | How do we handle platform-specific configuration validation? | **Each platform validates its own section.** Maintains platform isolation; shared infrastructure handles common sections. |
+| 4 | Should platforms share an instrumentor runner or each have their own? | **Shared runner.** Platforms provide registry (list of tuples); shared runner applies them. Reduces duplication. |
 
 ---
 
@@ -716,8 +697,8 @@ def instrument(config_path=None):
 
 | Document | Purpose |
 |----------|---------|
-| `docs/prd/PRD_02.md` | Multi-platform requirements |
-| `docs/api_spec/API_SPEC_02.md` | API specification |
+| `docs/prd/PRD_01.md` | Multi-platform requirements |
+| `docs/api_spec/API_SPEC_01.md` | API specification |
 | `docs/CONCEPTUAL_ARCHITECTURE.md` | High-level system shape |
 | `docs/reference_architecture/REFERENCE_ARCHITECTURE_01.md` | Architectural patterns |
 
@@ -725,3 +706,4 @@ def instrument(config_path=None):
 
 **Document Owner:** Platform Team
 **Last Updated:** 2026-01-22
+**Status:** Accepted
