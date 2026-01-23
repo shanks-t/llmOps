@@ -1,6 +1,6 @@
 # llmops.yaml - SDK configuration for Phoenix (local Docker backend)
 #
-# This configuration demonstrates the llmops.instrument() API from API_SPEC_01.md.
+# This configuration demonstrates the llmops.arize.instrument() API from API_SPEC_01.md.
 # Traces are sent to Phoenix running in Docker (see docker/docker-compose.yaml).
 
 service:

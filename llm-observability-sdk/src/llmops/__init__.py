@@ -1,29 +1,33 @@
-"""LLM Observability SDK — Unified auto-instrumentation for LLM applications.
+"""LLM Observability SDK — Platform-explicit auto-instrumentation.
 
-This SDK provides a single entry point for auto-instrumentation of Google ADK
-and Google GenAI with Arize telemetry.
+This SDK provides platform namespaces for explicit backend selection:
 
-Usage:
     import llmops
-
-    # Initialize with config file path
-    llmops.instrument(config_path="/path/to/llmops.yaml")
-
-    # Or use LLMOPS_CONFIG_PATH environment variable
-    # export LLMOPS_CONFIG_PATH=/path/to/llmops.yaml
-    llmops.instrument()
-
-    # Your app code runs with auto-instrumentation enabled
-    # ...
+    llmops.arize.instrument(config_path="/path/to/llmops.yaml")
+    llmops.mlflow.instrument(config_path="/path/to/llmops.yaml")
 """
 
-from llmops.exceptions import ConfigurationError
-from llmops.instrument import instrument
+from __future__ import annotations
 
-__version__ = "0.1.0"
+from llmops.exceptions import ConfigurationError
+
+__version__ = "0.2.0"
 
 __all__ = [
-    "instrument",
     "ConfigurationError",
     "__version__",
+    "arize",
+    "mlflow",
 ]
+
+
+def __getattr__(name: str):
+    if name in {"arize", "mlflow"}:
+        import importlib
+
+        return importlib.import_module(f"llmops.{name}")
+    raise AttributeError(f"module 'llmops' has no attribute '{name}'")
+
+
+def __dir__() -> list[str]:
+    return sorted(__all__)

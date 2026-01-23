@@ -1,4 +1,4 @@
-"""Tests for telemetry setup using arize.otel and TLS configuration.
+"""Tests for Arize telemetry setup and TLS configuration.
 
 Requirements covered:
 - TracerProvider creation via arize.otel.register
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
 # Traceability metadata
 PRD_ID = "PRD_01"
-CAPABILITY = "telemetry_modes"
+CAPABILITY = "arize_telemetry"
 
 
 class TestArizeOtelMode:
@@ -50,7 +50,6 @@ arize:
 
         config = load_config(config_path)
 
-        # Create a mock for arize.otel.register
         mock_provider = MagicMock()
         mock_register = MagicMock(return_value=mock_provider)
         mock_transport = MagicMock()
@@ -61,7 +60,6 @@ arize:
         mock_arize_otel.Transport = mock_transport
 
         with patch.dict("sys.modules", {"arize.otel": mock_arize_otel}):
-            # Import after patching sys.modules
             import importlib
 
             import llmops._internal.telemetry as telemetry_module
@@ -274,7 +272,6 @@ arize:
 
         config = load_config(config_path)
 
-        # Mock arize.otel.register and Transport
         mock_provider = MagicMock()
         mock_register = MagicMock(return_value=mock_provider)
         mock_transport = MagicMock()
@@ -295,7 +292,7 @@ arize:
 
             mock_register.assert_called_once()
             call_kwargs = mock_register.call_args[1]
-            assert call_kwargs["transport"] == "HTTP"  # HTTP from Transport enum
+            assert call_kwargs["transport"] == "HTTP"
             assert call_kwargs["batch"] is False
             assert call_kwargs["log_to_console"] is True
 
@@ -400,7 +397,6 @@ arize:
         WHEN config is loaded
         THEN the path is resolved relative to the config file's directory
         """
-        # Create a subdirectory structure
         config_dir = tmp_path / "config"
         certs_dir = config_dir / "certs"
         config_dir.mkdir()
@@ -409,7 +405,6 @@ arize:
         cert_file = certs_dir / "ca.pem"
         cert_file.write_text("ca cert")
 
-        # Use relative path in config
         config_content = """service:
   name: test-service
 
@@ -423,7 +418,6 @@ arize:
         from llmops.config import load_config
 
         config = load_config(config_path)
-        # Should be resolved to absolute path from config file's directory
         assert config.arize.certificate_file == str(cert_file)
 
     def test_absolute_path_not_modified(
@@ -513,18 +507,12 @@ validation:
 
         from llmops.config import load_config
 
-        # Should not raise - permissive mode
         config = load_config(config_path)
         assert config.arize.certificate_file == "/nonexistent/path/cert.pem"
 
 
 class TestTLSBridgeToEnvVars:
-    """Tests for _bridge_tls_config_to_env() function.
-
-    This function bridges TLS certificate configuration from llmops config
-    to standard OTEL environment variables, enabling seamless TLS support
-    when using arize.otel.register().
-    """
+    """Tests for _bridge_tls_config_to_env() function."""
 
     def test_bridge_sets_certificate_env_var(
         self,
@@ -537,7 +525,6 @@ class TestTLSBridgeToEnvVars:
         WHEN _bridge_tls_config_to_env is called
         THEN the env var is set to the certificate path
         """
-        # Ensure env var is not set
         monkeypatch.delenv("OTEL_EXPORTER_OTLP_CERTIFICATE", raising=False)
 
         cert_file = tmp_path / "ca-bundle.pem"
@@ -598,7 +585,6 @@ arize:
 
         import os
 
-        # Should keep existing value, not override
         assert os.environ.get("OTEL_EXPORTER_OTLP_CERTIFICATE") == existing_cert
 
     def test_bridge_skips_none_values(
@@ -611,7 +597,6 @@ arize:
         WHEN _bridge_tls_config_to_env is called
         THEN no env vars are set (no errors, no side effects)
         """
-        # Clear env var
         monkeypatch.delenv("OTEL_EXPORTER_OTLP_CERTIFICATE", raising=False)
 
         config_content = """service:
@@ -643,7 +628,6 @@ arize:
         WHEN create_tracer_provider is called
         THEN _bridge_tls_config_to_env is called (env var is set)
         """
-        # Clear env var
         monkeypatch.delenv("OTEL_EXPORTER_OTLP_CERTIFICATE", raising=False)
 
         cert_file = tmp_path / "ca-bundle.pem"
@@ -665,7 +649,6 @@ arize:
 
         config = load_config(config_path)
 
-        # Mock arize.otel.register and Transport
         mock_provider = MagicMock()
         mock_register = MagicMock(return_value=mock_provider)
         mock_transport = MagicMock()
@@ -684,7 +667,6 @@ arize:
 
             telemetry_module.create_tracer_provider(config)
 
-            # Verify env var was set by the bridge
             import os
 
             assert os.environ.get("OTEL_EXPORTER_OTLP_CERTIFICATE") == str(cert_file)

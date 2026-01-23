@@ -1,13 +1,13 @@
 # LLMOps Demo
 
-Minimal FastAPI example demonstrating the `llmops.instrument()` API for auto-instrumentation of Google ADK.
+Minimal FastAPI example demonstrating the `llmops.arize.instrument()` API for auto-instrumentation of Google ADK.
 
 ## Overview
 
 This example shows how to use the llmops SDK with a simple YAML configuration file to automatically instrument Google ADK agents and send traces to Phoenix.
 
 Key features:
-- Single `llmops.instrument()` call in FastAPI lifespan
+- Single `llmops.arize.instrument()` call in FastAPI lifespan
 - Configuration via `llmops.yaml`
 - Auto-instrumentation of Google ADK
 - Traces sent to Phoenix (local Docker backend)
@@ -107,7 +107,7 @@ See [API_SPEC_01.md](../../../docs/api_spec/API_SPEC_01.md) for full configurati
 
 ```
 llmops_demo/
-├── main.py          # FastAPI app with llmops.instrument() in lifespan
+├── main.py          # FastAPI app with llmops.arize.instrument() in lifespan
 ├── agents.py        # Google ADK agent with tools
 ├── llmops.yaml      # SDK configuration
 ├── pyproject.toml   # Dependencies

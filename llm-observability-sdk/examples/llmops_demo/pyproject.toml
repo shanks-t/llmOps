@@ -1,7 +1,7 @@
 [project]
 name = "llmops-demo"
 version = "0.1.0"
-description = "Minimal FastAPI example demonstrating llmops.instrument() for auto-instrumentation"
+description = "Minimal FastAPI example demonstrating llmops.arize.instrument() for auto-instrumentation"
 requires-python = ">=3.13"
 dependencies = [
     # FastAPI and server

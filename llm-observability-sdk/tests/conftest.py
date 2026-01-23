@@ -12,12 +12,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Generator
 
+import sys
+from types import ModuleType
+
 import pytest
 from opentelemetry import trace as trace_api
+from opentelemetry.sdk.resources import SERVICE_NAME, SERVICE_VERSION, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
-from opentelemetry.sdk.resources import SERVICE_NAME, SERVICE_VERSION, Resource
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -34,14 +37,12 @@ def _reset_trace_globals() -> None:
     """
     from opentelemetry.util._once import Once
 
-    # Shutdown any existing provider to stop background threads
-    # and prevent network calls during flush
     current_provider = trace_api.get_tracer_provider()
     shutdown_fn = getattr(current_provider, "shutdown", None)
     if callable(shutdown_fn):
         try:
             shutdown_fn()
-        except Exception:  # nosec B110 - intentional: cleanup errors should not fail tests
+        except Exception:  # nosec B110 - cleanup errors should not fail tests
             pass
 
     trace_api._TRACER_PROVIDER_SET_ONCE = Once()
@@ -51,21 +52,13 @@ def _reset_trace_globals() -> None:
 
 @pytest.fixture
 def in_memory_exporter() -> InMemorySpanExporter:
-    """Provide an InMemorySpanExporter for capturing spans in tests.
-
-    Use this fixture when you need to assert on captured spans.
-    The exporter stores all spans in memory with no network calls.
-    """
+    """Provide an InMemorySpanExporter for capturing spans in tests."""
     return InMemorySpanExporter()
 
 
 @pytest.fixture
 def test_tracer_provider(in_memory_exporter: InMemorySpanExporter) -> TracerProvider:
-    """Create a test TracerProvider with in-memory exporter.
-
-    Uses SimpleSpanProcessor for synchronous, deterministic behavior
-    (unlike BatchSpanProcessor which has background threads).
-    """
+    """Create a test TracerProvider with in-memory exporter."""
     provider = TracerProvider()
     provider.add_span_processor(SimpleSpanProcessor(in_memory_exporter))
     return provider
@@ -75,22 +68,7 @@ def _create_test_tracer_provider(
     config: "LLMOpsConfig",
     in_memory_exporter: InMemorySpanExporter,
 ) -> TracerProvider:
-    """Create a TracerProvider for tests that mimics production behavior.
-
-    This function mirrors the production create_tracer_provider() but:
-    - Uses InMemorySpanExporter instead of OTLPSpanExporter
-    - Uses SimpleSpanProcessor instead of BatchSpanProcessor
-    - Still sets resource attributes from config (for assertion tests)
-    - Still sets the global tracer provider
-
-    Args:
-        config: The SDK configuration (used for resource attributes).
-        in_memory_exporter: The in-memory exporter to capture spans.
-
-    Returns:
-        Configured TracerProvider set as the global provider.
-    """
-    # Build resource attributes (same as production)
+    """Create a TracerProvider for tests that mimics production behavior."""
     resource_attrs: dict[str, str] = {
         SERVICE_NAME: config.service.name,
     }
@@ -99,25 +77,14 @@ def _create_test_tracer_provider(
 
     resource = Resource.create(resource_attrs)
     provider = TracerProvider(resource=resource)
-
-    # Use in-memory exporter with synchronous processor
     provider.add_span_processor(SimpleSpanProcessor(in_memory_exporter))
-
-    # Set as global tracer provider (same as production)
     trace_api.set_tracer_provider(provider)
-
     return provider
 
 
 @pytest.fixture(autouse=True)
 def reset_otel_state() -> Generator[None, None, None]:
-    """Reset OpenTelemetry global state before and after each test.
-
-    This fixture runs automatically for all tests to ensure:
-    - Tests don't interfere with each other's global state
-    - No "tracer provider already set" errors
-    - Clean shutdown of any providers created during tests
-    """
+    """Reset OpenTelemetry global state before and after each test."""
     _reset_trace_globals()
     yield
     _reset_trace_globals()
@@ -128,42 +95,48 @@ def mock_sdk_telemetry(
     monkeypatch: pytest.MonkeyPatch,
     in_memory_exporter: InMemorySpanExporter,
 ) -> Generator[InMemorySpanExporter, None, None]:
-    """Replace SDK's tracer provider creation with test-friendly version.
-
-    This fixture:
-    - Intercepts calls to create_tracer_provider()
-    - Returns a provider with InMemorySpanExporter (no network calls)
-    - Preserves config-based resource attributes for assertion tests
-
-    The fixture yields the in_memory_exporter so tests can optionally
-    inspect captured spans if needed.
-    """
+    """Replace SDK's tracer provider creation with test-friendly version."""
     import sys
 
     def mock_create_tracer_provider(config: "LLMOpsConfig") -> TracerProvider:
         return _create_test_tracer_provider(config, in_memory_exporter)
 
-    # Access the actual instrument module via sys.modules (not the function)
-    # This is necessary because llmops.__init__ exports 'instrument' as a function,
-    # which shadows the llmops.instrument module in import resolution
     import llmops  # noqa: F401 - ensures module is loaded
+    import llmops._internal.telemetry as telemetry_module
+    from llmops.config import ArizeConfig, LLMOpsConfig, MLflowConfig, ServiceConfig
 
-    instrument_module = sys.modules["llmops.instrument"]
+    module_names = [
+        "llmops._internal.telemetry",
+        "llmops._platforms.arize",
+    ]
+    for module_name in module_names:
+        module = sys.modules.get(module_name)
+        if module is None:
+            continue
+        if hasattr(module, "create_tracer_provider"):
+            monkeypatch.setattr(
+                module, "create_tracer_provider", mock_create_tracer_provider
+            )
+
+    noop_config = LLMOpsConfig(
+        service=ServiceConfig(name="llmops-noop"),
+        arize=ArizeConfig(endpoint=""),
+        mlflow=MLflowConfig(tracking_uri=""),
+    )
     monkeypatch.setattr(
-        instrument_module,
-        "create_tracer_provider",
-        mock_create_tracer_provider,
+        telemetry_module,
+        "create_noop_tracer_provider",
+        lambda: _create_test_tracer_provider(noop_config, in_memory_exporter),
     )
 
     yield in_memory_exporter
 
-    # Clear any captured spans after test
     in_memory_exporter.clear()
 
 
 @pytest.fixture
-def valid_config_content() -> str:
-    """Return valid YAML config content for tests."""
+def valid_arize_config_content() -> str:
+    """Return valid Arize YAML config content for tests."""
     return """service:
   name: test-service
   version: "1.0.0"
@@ -181,11 +154,56 @@ validation:
 
 
 @pytest.fixture
-def valid_config_file(tmp_path: "Path", valid_config_content: str) -> "Path":
-    """Create a valid config file and return its path."""
+def valid_arize_config_file(
+    tmp_path: "Path", valid_arize_config_content: str
+) -> "Path":
+    """Create a valid Arize config file and return its path."""
     config_path = tmp_path / "llmops.yaml"
-    config_path.write_text(valid_config_content)
+    config_path.write_text(valid_arize_config_content)
     return config_path
+
+
+@pytest.fixture
+def valid_arize_config_with_mlflow_content(valid_arize_config_content: str) -> str:
+    """Return a config that includes both Arize and MLflow sections."""
+    return (
+        valid_arize_config_content
+        + "\nmlflow:\n  tracking_uri: http://localhost:5001\n"
+    )
+
+
+@pytest.fixture
+def valid_mlflow_config_content() -> str:
+    """Return valid MLflow YAML config content for tests."""
+    return """service:
+  name: test-service
+  version: "1.0.0"
+
+mlflow:
+  tracking_uri: http://localhost:5001
+
+validation:
+  mode: permissive
+"""
+
+
+@pytest.fixture
+def valid_mlflow_config_file(
+    tmp_path: "Path", valid_mlflow_config_content: str
+) -> "Path":
+    """Create a valid MLflow config file and return its path."""
+    config_path = tmp_path / "llmops.yaml"
+    config_path.write_text(valid_mlflow_config_content)
+    return config_path
+
+
+@pytest.fixture
+def valid_mlflow_config_with_arize_content(valid_mlflow_config_content: str) -> str:
+    """Return a config that includes both MLflow and Arize sections."""
+    return (
+        valid_mlflow_config_content
+        + "\narize:\n  endpoint: http://localhost:6006/v1/traces\n"
+    )
 
 
 @pytest.fixture
@@ -194,3 +212,17 @@ def llmops_module() -> Any:
     import llmops
 
     return llmops
+
+
+@pytest.fixture
+def llmops_arize_module(llmops_module: Any) -> Any:
+    """Return the llmops.arize module."""
+    return getattr(llmops_module, "arize")
+
+
+@pytest.fixture
+def llmops_mlflow_module(llmops_module: Any) -> Any:
+    """Return the llmops.mlflow module."""
+    if "mlflow" not in sys.modules:
+        sys.modules["mlflow"] = ModuleType("mlflow")
+    return getattr(llmops_module, "mlflow")

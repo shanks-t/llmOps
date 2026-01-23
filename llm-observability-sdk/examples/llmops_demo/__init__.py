@@ -1,1 +1,1 @@
-"""LLMOps Demo - Minimal FastAPI example using llmops.instrument() for telemetry."""
+"""LLMOps Demo - Minimal FastAPI example using llmops.arize.instrument() for telemetry."""

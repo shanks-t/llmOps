@@ -58,6 +58,14 @@ class InstrumentationConfig:
 
 
 @dataclass
+class MLflowConfig:
+    """MLflow telemetry configuration (skeleton)."""
+
+    tracking_uri: str
+    experiment_name: str | None = None
+
+
+@dataclass
 class ValidationConfig:
     """Validation mode configuration."""
 
@@ -70,6 +78,7 @@ class LLMOpsConfig:
 
     service: ServiceConfig
     arize: ArizeConfig
+    mlflow: MLflowConfig
     instrumentation: InstrumentationConfig = field(
         default_factory=InstrumentationConfig
     )
@@ -182,11 +191,9 @@ def _parse_arize_config(
 
 def _parse_instrumentation_config(data: dict[str, Any]) -> InstrumentationConfig:
     """Parse instrumentation configuration section."""
-    # Extract known keys
     google_adk = data.get("google_adk", True)
     google_genai = data.get("google_genai", True)
 
-    # Collect unknown keys for forward compatibility
     known_keys = {"google_adk", "google_genai"}
     extra = {k: v for k, v in data.items() if k not in known_keys}
 
@@ -199,6 +206,14 @@ def _parse_instrumentation_config(data: dict[str, Any]) -> InstrumentationConfig
         google_adk=bool(google_adk),
         google_genai=bool(google_genai),
         extra=extra,
+    )
+
+
+def _parse_mlflow_config(data: dict[str, Any]) -> MLflowConfig:
+    """Parse MLflow configuration section."""
+    return MLflowConfig(
+        tracking_uri=data.get("tracking_uri", ""),
+        experiment_name=data.get("experiment_name"),
     )
 
 
@@ -222,16 +237,12 @@ def _validate_config(config: LLMOpsConfig) -> list[str]:
     """
     errors: list[str] = []
 
-    # Service name is required
     if not config.service.name:
         errors.append("service.name is required")
 
-    # Arize endpoint is required
-    if not config.arize.endpoint:
-        errors.append("arize.endpoint is required")
+    if not config.arize.endpoint and not config.mlflow.tracking_uri:
+        errors.append("arize.endpoint or mlflow.tracking_uri is required")
 
-    # Validate TLS certificate file exists (strict mode only)
-    # In permissive mode, these are logged as warnings during telemetry setup
     if config.arize.certificate_file:
         cert_path = Path(config.arize.certificate_file)
         if not cert_path.exists():
@@ -285,6 +296,7 @@ def load_config(path: Path, strict: bool | None = None) -> LLMOpsConfig:
     config = LLMOpsConfig(
         service=_parse_service_config(data.get("service", {})),
         arize=_parse_arize_config(data.get("arize", {}), config_dir=config_dir),
+        mlflow=_parse_mlflow_config(data.get("mlflow", {})),
         instrumentation=_parse_instrumentation_config(data.get("instrumentation", {})),
         validation=_parse_validation_config(data.get("validation", {})),
     )

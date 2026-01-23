@@ -1,11 +1,11 @@
-"""Contract tests for environment variable overrides — PRD_01.
+"""Contract tests for Arize environment variable overrides — PRD_01.
 
 Executable contracts derived from:
 - PRD: docs/prd/PRD_01.md
 - API: docs/api_spec/API_SPEC_01.md
 
 Requirements covered:
-- A8: Sensitive values (example: API keys) can be set via env var overrides
+- F10: Sensitive values (example: API keys) can be set via env var overrides
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 # Traceability metadata
 PRD_ID = "PRD_01"
 API_SPEC_ID = "API_SPEC_01"
-CAPABILITY = "env_overrides"
+CAPABILITY = "arize_env_overrides"
 
 
 class TestEnvVarOverrides:
@@ -30,15 +30,15 @@ class TestEnvVarOverrides:
         self,
         tmp_path: "Path",
         monkeypatch: pytest.MonkeyPatch,
-        llmops_module: Any,
+        llmops_arize_module: Any,
     ) -> None:
         """
         PRD: PRD_01
-        API: API_SPEC_01.instrument()
+        API: API_SPEC_01.llmops.arize.instrument()
 
         GIVEN a config file with arize.api_key set to "${ARIZE_API_KEY}"
         AND the ARIZE_API_KEY environment variable is set to "test-api-key"
-        WHEN llmops.instrument() is called
+        WHEN llmops.arize.instrument() is called
         THEN the API key from the environment is used
         """
         config_path = tmp_path / "llmops.yaml"
@@ -58,24 +58,23 @@ class TestEnvVarOverrides:
 
         monkeypatch.setenv("ARIZE_API_KEY", "test-api-key-from-env")
 
-        provider = llmops_module.instrument(config_path=config_path)
+        provider = llmops_arize_module.instrument(config_path=config_path)
 
         assert provider is not None
-        # Implementation should verify the env var value was substituted
 
     def test_space_id_can_be_set_via_env_var(
         self,
         tmp_path: "Path",
         monkeypatch: pytest.MonkeyPatch,
-        llmops_module: Any,
+        llmops_arize_module: Any,
     ) -> None:
         """
         PRD: PRD_01
-        API: API_SPEC_01.instrument()
+        API: API_SPEC_01.llmops.arize.instrument()
 
         GIVEN a config file with arize.space_id set to "${ARIZE_SPACE_ID}"
         AND the ARIZE_SPACE_ID environment variable is set
-        WHEN llmops.instrument() is called
+        WHEN llmops.arize.instrument() is called
         THEN the space ID from the environment is used
         """
         config_path = tmp_path / "llmops.yaml"
@@ -95,24 +94,23 @@ class TestEnvVarOverrides:
 
         monkeypatch.setenv("ARIZE_SPACE_ID", "test-space-id-from-env")
 
-        provider = llmops_module.instrument(config_path=config_path)
+        provider = llmops_arize_module.instrument(config_path=config_path)
 
         assert provider is not None
-        # Implementation should verify the env var value was substituted
 
     def test_missing_env_var_in_permissive_mode_does_not_fail(
         self,
         tmp_path: "Path",
         monkeypatch: pytest.MonkeyPatch,
-        llmops_module: Any,
+        llmops_arize_module: Any,
     ) -> None:
         """
         PRD: PRD_01
-        API: API_SPEC_01.instrument()
+        API: API_SPEC_01.llmops.arize.instrument()
 
         GIVEN a config file referencing an env var that is not set
         AND validation mode is permissive
-        WHEN llmops.instrument() is called
+        WHEN llmops.arize.instrument() is called
         THEN the SDK initializes without raising an exception
         AND a no-op or degraded mode is used
         """
@@ -133,7 +131,7 @@ class TestEnvVarOverrides:
 
         monkeypatch.delenv("NONEXISTENT_ENV_VAR", raising=False)
 
-        provider = llmops_module.instrument(config_path=config_path)
+        provider = llmops_arize_module.instrument(config_path=config_path)
 
         assert provider is not None
 
@@ -141,15 +139,15 @@ class TestEnvVarOverrides:
         self,
         tmp_path: "Path",
         monkeypatch: pytest.MonkeyPatch,
-        llmops_module: Any,
+        llmops_arize_module: Any,
     ) -> None:
         """
         PRD: PRD_01
-        API: API_SPEC_01.instrument()
+        API: API_SPEC_01.llmops.arize.instrument()
 
         GIVEN a config file referencing an env var that is not set
         AND validation mode is strict
-        WHEN llmops.instrument() is called
+        WHEN llmops.arize.instrument() is called
         THEN a ConfigurationError is raised
         """
         config_path = tmp_path / "llmops.yaml"
@@ -169,5 +167,5 @@ class TestEnvVarOverrides:
 
         monkeypatch.delenv("NONEXISTENT_ENV_VAR", raising=False)
 
-        with pytest.raises(llmops_module.ConfigurationError):
-            llmops_module.instrument(config_path=config_path)
+        with pytest.raises(llmops_arize_module.ConfigurationError):
+            llmops_arize_module.instrument(config_path=config_path)

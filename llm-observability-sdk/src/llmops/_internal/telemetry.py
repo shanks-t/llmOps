@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
-from arize.otel import Transport, register
 from opentelemetry import trace
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
@@ -28,29 +27,28 @@ def create_tracer_provider(config: LLMOpsConfig) -> TracerProvider:
     """
     logger.debug("Using arize.otel.register for TracerProvider creation")
 
-    # Bridge TLS config to OTEL environment variables
     _bridge_tls_config_to_env(config)
 
-    # Map transport config to arize.otel Transport enum
+    from arize.otel import Transport, register
+
     transport = Transport.HTTP if config.arize.transport == "http" else Transport.GRPC
 
-    # Build kwargs, only passing non-None values
-    kwargs: dict[str, str | bool | None] = {
+    kwargs: dict[str, Any] = {
         "transport": transport,
         "batch": config.arize.batch_spans,
         "log_to_console": config.arize.debug,
-        "verbose": False,  # SDK handles its own logging
+        "verbose": False,
     }
-    if config.arize.space_id:
+    if config.arize.space_id is not None:
         kwargs["space_id"] = config.arize.space_id
-    if config.arize.api_key:
+    if config.arize.api_key is not None:
         kwargs["api_key"] = config.arize.api_key
-    if config.arize.project_name:
+    if config.arize.project_name is not None:
         kwargs["project_name"] = config.arize.project_name
-    if config.arize.endpoint:
+    if config.arize.endpoint is not None:
         kwargs["endpoint"] = config.arize.endpoint
 
-    provider: TracerProvider = register(**kwargs)
+    provider = cast(TracerProvider, register(**kwargs))  # type: ignore[arg-type,call-arg]
 
     logger.debug(
         "TracerProvider configured via arize.otel with endpoint: %s (transport=%s)",
