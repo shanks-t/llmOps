@@ -34,16 +34,23 @@ arize:
   # Optional: Transport protocol (default: "http")
   # - "http": HTTP/HTTPS transport (recommended, works with most proxies/firewalls)
   # - "grpc": gRPC transport (requires opentelemetry-exporter-otlp-proto-grpc)
+  # Maps directly to arize.otel.register(transport=Transport.HTTP)
   transport: http
 
-  # Optional: Span processor mode (default: true)
+  # Optional: Span batching mode (default: true)
   # - true: BatchSpanProcessor (non-blocking, recommended for production)
   # - false: SimpleSpanProcessor (blocking, useful for development/debugging)
-  batch_spans: true
+  # Maps directly to arize.otel.register(batch=)
+  batch: true
 
-  # Optional: Debug mode - log spans to console (default: false)
+  # Optional: Log spans to console (default: false)
   # Useful during development to see what spans are being created
-  debug: false
+  # Maps directly to arize.otel.register(log_to_console=)
+  log_to_console: false
+
+  # Optional: Print configuration details to stdout (default: false)
+  # Maps directly to arize.otel.register(verbose=)
+  verbose: false
 
   # Optional: TLS certificate for self-hosted HTTPS endpoints
   # Path can be relative (resolved from this config file) or absolute
@@ -113,8 +120,9 @@ validation:
 # arize:
 #   endpoint: http://localhost:6006/v1/traces
 #   transport: http
-#   batch_spans: false      # Use SimpleSpanProcessor for immediate span export
-#   debug: true             # Log spans to console for debugging
+#   batch: false            # Use SimpleSpanProcessor for immediate span export
+#   log_to_console: true    # Log spans to console for debugging
+#   verbose: true           # Print configuration details
 #
 # instrumentation:
 #   google_adk: true
@@ -136,8 +144,9 @@ validation:
 #   api_key: ${ARIZE_API_KEY}
 #   project_name: ${ARIZE_PROJECT_NAME}
 #   transport: http
-#   batch_spans: true
-#   debug: false
+#   batch: true
+#   log_to_console: false
+#   verbose: false
 #
 # instrumentation:
 #   google_adk: true
@@ -160,7 +169,7 @@ validation:
 #   project_name: my-project
 #   certificate_file: ./certs/arize-ca.pem   # Relative path from this config file
 #   transport: http
-#   batch_spans: true
+#   batch: true
 #
 # validation:
 #   mode: strict

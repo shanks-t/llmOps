@@ -4,6 +4,7 @@ This module provides test fixtures that:
 1. Reset OpenTelemetry global state between tests for isolation
 2. Use InMemorySpanExporter to avoid network calls during unit tests
 3. Mock the SDK's telemetry creation to use test-friendly components
+4. Provide typed fakes (FakeArizeOtel) instead of MagicMock
 
 Following OpenTelemetry Python SDK testing patterns.
 """
@@ -21,6 +22,8 @@ from opentelemetry.sdk.resources import SERVICE_NAME, SERVICE_VERSION, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+from tests.fakes import FakeArizeOtel, Transport
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -92,10 +95,25 @@ def reset_otel_state() -> Generator[None, None, None]:
 
 @pytest.fixture(autouse=True)
 def mock_sdk_telemetry(
+    request: pytest.FixtureRequest,
     monkeypatch: pytest.MonkeyPatch,
     in_memory_exporter: InMemorySpanExporter,
 ) -> Generator[InMemorySpanExporter, None, None]:
-    """Replace SDK's tracer provider creation with test-friendly version."""
+    """Replace SDK's tracer provider creation with test-friendly version.
+
+    This fixture is automatically applied to all tests. To disable it for
+    tests that need to verify real arize.otel interactions, use the
+    'disable_mock_sdk_telemetry' marker:
+
+        @pytest.mark.disable_mock_sdk_telemetry
+        def test_something(patched_arize_otel):
+            ...
+    """
+    # Check if test has the disable marker
+    if request.node.get_closest_marker("disable_mock_sdk_telemetry"):
+        yield in_memory_exporter
+        return
+
     import sys
 
     def mock_create_tracer_provider(config: "LLMOpsConfig") -> TracerProvider:
@@ -226,3 +244,60 @@ def llmops_mlflow_module(llmops_module: Any) -> Any:
     if "mlflow" not in sys.modules:
         sys.modules["mlflow"] = ModuleType("mlflow")
     return getattr(llmops_module, "mlflow")
+
+
+@pytest.fixture
+def fake_arize_otel(in_memory_exporter: InMemorySpanExporter) -> FakeArizeOtel:
+    """Provide a FakeArizeOtel instance for testing arize.otel interactions.
+
+    This is preferred over MagicMock because:
+    - It has explicit method signatures matching the real API
+    - It catches typos at test time (AttributeError vs silent MagicMock)
+    - It returns real TracerProvider instances
+    - It allows span capture via InMemorySpanExporter
+
+    Usage:
+        def test_something(fake_arize_otel):
+            provider = some_function_that_calls_register(fake_arize_otel.register)
+            fake_arize_otel.assert_registered_with(space_id="expected")
+    """
+    return FakeArizeOtel(exporter=in_memory_exporter)
+
+
+@pytest.fixture
+def patched_arize_otel(
+    fake_arize_otel: FakeArizeOtel,
+) -> Generator[FakeArizeOtel, None, None]:
+    """Patch arize.otel in sys.modules with FakeArizeOtel.
+
+    This fixture patches sys.modules so that `from arize.otel import register`
+    uses the fake. Since create_tracer_provider imports arize.otel at call time
+    (not module load time), no reload is necessary.
+
+    Usage:
+        @pytest.mark.disable_mock_sdk_telemetry
+        def test_something(patched_arize_otel, tmp_path):
+            # Create config and call code that imports arize.otel
+            provider = create_tracer_provider(config)
+            patched_arize_otel.assert_registered_with(space_id="test")
+    """
+
+    # Create a module-like object that has our fake's attributes
+    class FakeArizeOtelModule:
+        register = fake_arize_otel.register
+        Transport = Transport
+
+    # Save original arize.otel module if it exists
+    original_module = sys.modules.get("arize.otel")
+
+    # Patch sys.modules with our fake
+    sys.modules["arize.otel"] = FakeArizeOtelModule()  # type: ignore[assignment]
+
+    try:
+        yield fake_arize_otel
+    finally:
+        # Restore original module
+        if original_module is not None:
+            sys.modules["arize.otel"] = original_module
+        else:
+            sys.modules.pop("arize.otel", None)

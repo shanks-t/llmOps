@@ -35,9 +35,11 @@ def create_tracer_provider(config: LLMOpsConfig) -> TracerProvider:
 
     kwargs: dict[str, Any] = {
         "transport": transport,
-        "batch": config.arize.batch_spans,
-        "log_to_console": config.arize.debug,
-        "verbose": False,
+        "batch": config.arize.batch,
+        "set_global_tracer_provider": True,
+        "headers": None,
+        "verbose": config.arize.verbose,
+        "log_to_console": config.arize.log_to_console,
     }
     if config.arize.space_id is not None:
         kwargs["space_id"] = config.arize.space_id

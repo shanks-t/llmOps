@@ -10,29 +10,42 @@ Requirements covered:
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock, patch
 
 import pytest
+from opentelemetry.sdk.trace import TracerProvider
+
+from tests.fakes import Transport
 
 if TYPE_CHECKING:
     from pathlib import Path
+    from tests.fakes import FakeArizeOtel
 
 # Traceability metadata
 PRD_ID = "PRD_01"
 CAPABILITY = "arize_telemetry"
 
 
+@pytest.mark.disable_mock_sdk_telemetry
 class TestArizeOtelMode:
-    """Tests for arize.otel.register integration."""
+    """Tests for arize.otel.register integration.
 
-    def test_create_tracer_provider_calls_register(
+    These tests verify that create_tracer_provider correctly passes
+    config values to arize.otel.register() parameters using FakeArizeOtel.
+
+    Note: This class is marked with @pytest.mark.disable_mock_sdk_telemetry
+    to disable the autouse mock_sdk_telemetry fixture, allowing tests to
+    verify actual arize.otel interactions.
+    """
+
+    def test_create_tracer_provider_passes_config_to_register(
         self,
         tmp_path: "Path",
+        patched_arize_otel: "FakeArizeOtel",
     ) -> None:
         """
         GIVEN a valid config with arize credentials
         WHEN create_tracer_provider is called
-        THEN arize.otel.register is called with correct arguments
+        THEN arize.otel.register receives the config values
         """
         config_content = """service:
   name: test-service
@@ -47,38 +60,26 @@ arize:
         config_path.write_text(config_content)
 
         from llmops.config import load_config
+        import llmops._internal.telemetry as telemetry_module
 
         config = load_config(config_path)
+        provider = telemetry_module.create_tracer_provider(config)
 
-        mock_provider = MagicMock()
-        mock_register = MagicMock(return_value=mock_provider)
-        mock_transport = MagicMock()
-        mock_transport.HTTP = "HTTP"
-        mock_transport.GRPC = "GRPC"
-        mock_arize_otel = MagicMock()
-        mock_arize_otel.register = mock_register
-        mock_arize_otel.Transport = mock_transport
+        # Verify config values are passed to arize.otel.register
+        patched_arize_otel.assert_registered_once()
+        patched_arize_otel.assert_registered_with(
+            space_id="test-space",
+            api_key="test-key",
+            project_name="test-project",
+            endpoint="https://otlp.arize.com/v1/traces",
+        )
 
-        with patch.dict("sys.modules", {"arize.otel": mock_arize_otel}):
-            import importlib
-
-            import llmops._internal.telemetry as telemetry_module
-
-            importlib.reload(telemetry_module)
-
-            provider = telemetry_module.create_tracer_provider(config)
-
-            mock_register.assert_called_once()
-            call_kwargs = mock_register.call_args[1]
-            assert call_kwargs["space_id"] == "test-space"
-            assert call_kwargs["api_key"] == "test-key"
-            assert call_kwargs["project_name"] == "test-project"
-            assert call_kwargs["endpoint"] == "https://otlp.arize.com/v1/traces"
-            assert provider == mock_provider
+        # Verify we got a real TracerProvider
+        assert isinstance(provider, TracerProvider)
 
 
-class TestNewConfigOptions:
-    """Tests for transport, batch_spans, and debug config options."""
+class TestArizeConfigOptions:
+    """Tests for transport, batch, log_to_console, and verbose config options."""
 
     def test_transport_defaults_to_http(
         self,
@@ -151,14 +152,14 @@ arize:
         config = load_config(config_path)
         assert config.arize.transport == "http"
 
-    def test_batch_spans_defaults_to_true(
+    def test_batch_defaults_to_true(
         self,
         tmp_path: "Path",
     ) -> None:
         """
-        GIVEN batch_spans is NOT specified in config
+        GIVEN batch is NOT specified in config
         WHEN config is loaded
-        THEN batch_spans defaults to True
+        THEN batch defaults to True
         """
         config_content = """service:
   name: test-service
@@ -172,23 +173,23 @@ arize:
         from llmops.config import load_config
 
         config = load_config(config_path)
-        assert config.arize.batch_spans is True
+        assert config.arize.batch is True
 
-    def test_batch_spans_false_parsed(
+    def test_batch_false_parsed(
         self,
         tmp_path: "Path",
     ) -> None:
         """
-        GIVEN batch_spans is false in config
+        GIVEN batch is false in config
         WHEN config is loaded
-        THEN batch_spans is False
+        THEN batch is False
         """
         config_content = """service:
   name: test-service
 
 arize:
   endpoint: https://otlp.arize.com/v1/traces
-  batch_spans: false
+  batch: false
 """
         config_path = tmp_path / "config.yaml"
         config_path.write_text(config_content)
@@ -196,16 +197,16 @@ arize:
         from llmops.config import load_config
 
         config = load_config(config_path)
-        assert config.arize.batch_spans is False
+        assert config.arize.batch is False
 
-    def test_debug_defaults_to_false(
+    def test_log_to_console_defaults_to_false(
         self,
         tmp_path: "Path",
     ) -> None:
         """
-        GIVEN debug is NOT specified in config
+        GIVEN log_to_console is NOT specified in config
         WHEN config is loaded
-        THEN debug defaults to False
+        THEN log_to_console defaults to False
         """
         config_content = """service:
   name: test-service
@@ -219,23 +220,23 @@ arize:
         from llmops.config import load_config
 
         config = load_config(config_path)
-        assert config.arize.debug is False
+        assert config.arize.log_to_console is False
 
-    def test_debug_true_parsed(
+    def test_log_to_console_true_parsed(
         self,
         tmp_path: "Path",
     ) -> None:
         """
-        GIVEN debug is true in config
+        GIVEN log_to_console is true in config
         WHEN config is loaded
-        THEN debug is True
+        THEN log_to_console is True
         """
         config_content = """service:
   name: test-service
 
 arize:
   endpoint: https://otlp.arize.com/v1/traces
-  debug: true
+  log_to_console: true
 """
         config_path = tmp_path / "config.yaml"
         config_path.write_text(config_content)
@@ -243,14 +244,63 @@ arize:
         from llmops.config import load_config
 
         config = load_config(config_path)
-        assert config.arize.debug is True
+        assert config.arize.log_to_console is True
 
-    def test_arize_otel_receives_new_options(
+    def test_verbose_defaults_to_false(
         self,
         tmp_path: "Path",
     ) -> None:
         """
-        GIVEN transport, batch_spans, and debug are specified in config
+        GIVEN verbose is NOT specified in config
+        WHEN config is loaded
+        THEN verbose defaults to False
+        """
+        config_content = """service:
+  name: test-service
+
+arize:
+  endpoint: https://otlp.arize.com/v1/traces
+"""
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(config_content)
+
+        from llmops.config import load_config
+
+        config = load_config(config_path)
+        assert config.arize.verbose is False
+
+    def test_verbose_true_parsed(
+        self,
+        tmp_path: "Path",
+    ) -> None:
+        """
+        GIVEN verbose is true in config
+        WHEN config is loaded
+        THEN verbose is True
+        """
+        config_content = """service:
+  name: test-service
+
+arize:
+  endpoint: https://otlp.arize.com/v1/traces
+  verbose: true
+"""
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(config_content)
+
+        from llmops.config import load_config
+
+        config = load_config(config_path)
+        assert config.arize.verbose is True
+
+    @pytest.mark.disable_mock_sdk_telemetry
+    def test_arize_otel_receives_config_options(
+        self,
+        tmp_path: "Path",
+        patched_arize_otel: "FakeArizeOtel",
+    ) -> None:
+        """
+        GIVEN transport, batch, log_to_console, and verbose are specified in config
         WHEN create_tracer_provider is called
         THEN arize.otel.register receives these options
         """
@@ -262,39 +312,27 @@ arize:
   space_id: test-space
   api_key: test-key
   transport: http
-  batch_spans: false
-  debug: true
+  batch: false
+  log_to_console: true
+  verbose: true
 """
         config_path = tmp_path / "config.yaml"
         config_path.write_text(config_content)
 
         from llmops.config import load_config
+        import llmops._internal.telemetry as telemetry_module
 
         config = load_config(config_path)
+        telemetry_module.create_tracer_provider(config)
 
-        mock_provider = MagicMock()
-        mock_register = MagicMock(return_value=mock_provider)
-        mock_transport = MagicMock()
-        mock_transport.HTTP = "HTTP"
-        mock_transport.GRPC = "GRPC"
-        mock_arize_otel = MagicMock()
-        mock_arize_otel.register = mock_register
-        mock_arize_otel.Transport = mock_transport
-
-        with patch.dict("sys.modules", {"arize.otel": mock_arize_otel}):
-            import importlib
-
-            import llmops._internal.telemetry as telemetry_module
-
-            importlib.reload(telemetry_module)
-
-            telemetry_module.create_tracer_provider(config)
-
-            mock_register.assert_called_once()
-            call_kwargs = mock_register.call_args[1]
-            assert call_kwargs["transport"] == "HTTP"
-            assert call_kwargs["batch"] is False
-            assert call_kwargs["log_to_console"] is True
+        # Verify config values are passed to arize.otel.register
+        patched_arize_otel.assert_registered_once()
+        patched_arize_otel.assert_registered_with(
+            transport=Transport.HTTP,
+            batch=False,
+            log_to_console=True,
+            verbose=True,
+        )
 
 
 class TestTLSCertificateConfig:
@@ -618,15 +656,20 @@ arize:
 
         assert os.environ.get("OTEL_EXPORTER_OTLP_CERTIFICATE") is None
 
+    @pytest.mark.disable_mock_sdk_telemetry
     def test_create_tracer_provider_calls_bridge(
         self,
         tmp_path: "Path",
         monkeypatch: pytest.MonkeyPatch,
+        patched_arize_otel: "FakeArizeOtel",
     ) -> None:
         """
         GIVEN certificate_file is specified in config
         WHEN create_tracer_provider is called
         THEN _bridge_tls_config_to_env is called (env var is set)
+
+        Note: This tests the side effect of TLS config bridging to env vars,
+        which is the observable behavior we care about.
         """
         monkeypatch.delenv("OTEL_EXPORTER_OTLP_CERTIFICATE", raising=False)
 
@@ -646,30 +689,15 @@ arize:
         config_path.write_text(config_content)
 
         from llmops.config import load_config
+        import llmops._internal.telemetry as telemetry_module
 
         config = load_config(config_path)
+        telemetry_module.create_tracer_provider(config)
 
-        mock_provider = MagicMock()
-        mock_register = MagicMock(return_value=mock_provider)
-        mock_transport = MagicMock()
-        mock_transport.HTTP = "HTTP"
-        mock_transport.GRPC = "GRPC"
-        mock_arize_otel = MagicMock()
-        mock_arize_otel.register = mock_register
-        mock_arize_otel.Transport = mock_transport
+        # Verify the observable behavior: env var is set
+        import os
 
-        with patch.dict("sys.modules", {"arize.otel": mock_arize_otel}):
-            import importlib
-
-            import llmops._internal.telemetry as telemetry_module
-
-            importlib.reload(telemetry_module)
-
-            telemetry_module.create_tracer_provider(config)
-
-            import os
-
-            assert os.environ.get("OTEL_EXPORTER_OTLP_CERTIFICATE") == str(cert_file)
+        assert os.environ.get("OTEL_EXPORTER_OTLP_CERTIFICATE") == str(cert_file)
 
 
 class TestProjectNameHeader:
