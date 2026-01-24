@@ -25,6 +25,12 @@ This project follows a **progressive constraint model**, moving from intent → 
 - Invariants (e.g. safety, extensibility, failure modes)
 - Constraints (latency, observability, compatibility)
 
+**Writing guidelines:**
+- Prefer conciseness over exhaustive detail
+- Focus on what the system must do, not how
+- Non-technical stakeholders should understand the problem and goals
+- Implementation details belong in architecture and API docs
+
 Agents must:
 - Treat the PRD as authoritative
 - Surface ambiguities or contradictions
