@@ -29,7 +29,10 @@ class ServiceConfig:
 
 @dataclass
 class ArizeConfig:
-    """Arize telemetry configuration."""
+    """Arize telemetry configuration.
+
+    These fields map directly to arize.otel.register() parameters.
+    """
 
     endpoint: str
     project_name: str | None = None
@@ -42,9 +45,11 @@ class ArizeConfig:
     # Transport protocol: "http" (default) or "grpc"
     transport: str = "http"
     # Span processor: True for BatchSpanProcessor (default), False for SimpleSpanProcessor
-    batch_spans: bool = True
-    # Debug mode: log spans to console (useful during development)
-    debug: bool = False
+    batch: bool = True
+    # Log spans to console (useful during development)
+    log_to_console: bool = False
+    # Print configuration details to stdout
+    verbose: bool = False
 
 
 @dataclass
@@ -184,8 +189,9 @@ def _parse_arize_config(
         space_id=data.get("space_id"),
         certificate_file=certificate_file,
         transport=transport,
-        batch_spans=data.get("batch_spans", True),
-        debug=data.get("debug", False),
+        batch=data.get("batch", True),
+        log_to_console=data.get("log_to_console", False),
+        verbose=data.get("verbose", False),
     )
 
 

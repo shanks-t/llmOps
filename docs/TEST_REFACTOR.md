@@ -319,36 +319,38 @@ mock.regster()   # Typo? Still returns MagicMock! No error.
 **Solution:**
 ```python
 # tests/fakes.py
+from enum import Enum
+
+class Transport(str, Enum):
+    """Matches arize.otel.Transport exactly."""
+    GRPC = "grpc"
+    HTTPS = "https"
+    HTTP = "http"
+
 class FakeArizeOtel:
     """Test double for arize.otel that validates usage."""
 
-    class Transport:
-        HTTP = "HTTP"
-        GRPC = "GRPC"
+    Transport = Transport  # Expose enum
 
     def __init__(self):
-        self.register_calls: list[dict] = []
+        self.register_calls: list[RegisterCall] = []
         self._provider = None
 
     def register(
         self,
-        space_id: str,
-        api_key: str,
+        space_id: str | None = None,
+        api_key: str | None = None,
         project_name: str | None = None,
         endpoint: str | None = None,
-        transport: str = "HTTP",
+        transport: Transport = Transport.GRPC,
         batch: bool = True,
+        set_global_tracer_provider: bool = True,
+        headers: dict[str, str] | None = None,
+        verbose: bool = True,
         log_to_console: bool = False,
     ) -> TracerProvider:
-        """Fake register that records calls and returns a real provider."""
-        self.register_calls.append({
-            "space_id": space_id,
-            "api_key": api_key,
-            "project_name": project_name,
-            "transport": transport,
-            "batch": batch,
-        })
-
+        """Fake register matching arize.otel.register() signature exactly."""
+        self.register_calls.append(RegisterCall(...))
         if self._provider is None:
             self._provider = TracerProvider()
         return self._provider
@@ -356,23 +358,23 @@ class FakeArizeOtel:
     def assert_registered_with(self, **expected):
         """Assert register was called with expected args."""
         assert len(self.register_calls) == 1
-        actual = self.register_calls[0]
+        actual = self.register_calls[-1]
         for key, value in expected.items():
-            assert actual[key] == value, f"{key}: expected {value}, got {actual[key]}"
+            assert getattr(actual, key) == value
 ```
 
 **Usage:**
 ```python
-def test_config_translates_to_arize_params(self, config):
-    fake = FakeArizeOtel()
-    provider = create_tracer_provider(config, register_fn=fake.register)
+from tests.fakes import Transport
 
-    fake.assert_registered_with(
+def test_config_passes_to_arize_register(self, patched_arize_otel):
+    provider = create_tracer_provider(config)
+
+    patched_arize_otel.assert_registered_with(
         space_id="test-space",
-        transport="HTTP",
+        transport=Transport.HTTP,  # Use enum, not string
     )
 
-    # AND verify the provider actually works
     assert isinstance(provider, TracerProvider)
 ```
 
@@ -390,10 +392,11 @@ from hypothesis import given, strategies as st
 
 @given(
     transport=st.sampled_from(["http", "grpc", "HTTP", "GRPC", "invalid"]),
-    batch_spans=st.booleans(),
-    debug=st.booleans(),
+    batch=st.booleans(),
+    log_to_console=st.booleans(),
+    verbose=st.booleans(),
 )
-def test_config_options_never_crash(self, transport, batch_spans, debug, tmp_path):
+def test_config_options_never_crash(self, transport, batch, log_to_console, verbose, tmp_path):
     """Any combination of config options should parse without exception."""
     config_content = f"""
 service:
@@ -401,8 +404,9 @@ service:
 arize:
   endpoint: https://example.com
   transport: {transport}
-  batch_spans: {batch_spans}
-  debug: {debug}
+  batch: {batch}
+  log_to_console: {log_to_console}
+  verbose: {verbose}
 """
     config_path = tmp_path / "config.yaml"
     config_path.write_text(config_content)

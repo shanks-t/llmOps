@@ -12,7 +12,8 @@ Following the testing philosophy:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from enum import Enum
 from typing import TYPE_CHECKING
 
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
@@ -21,21 +22,38 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 if TYPE_CHECKING:
-    from opentelemetry.sdk.trace.export import ReadableSpan
+    from opentelemetry.sdk.trace import ReadableSpan
+
+
+class Transport(str, Enum):
+    """Fake Transport enum matching arize.otel.Transport.
+
+    This is a str enum so that values can be compared directly:
+        Transport.HTTP == "http"  # True
+    """
+
+    GRPC = "grpc"
+    HTTPS = "https"
+    HTTP = "http"
 
 
 @dataclass
 class RegisterCall:
-    """Record of a call to arize.otel.register()."""
+    """Record of a call to arize.otel.register().
+
+    Captures all parameters for verification in tests.
+    """
 
     space_id: str | None
     api_key: str | None
     project_name: str | None
     endpoint: str | None
-    transport: str
+    transport: Transport
     batch: bool
-    log_to_console: bool
+    set_global_tracer_provider: bool
+    headers: dict[str, str] | None
     verbose: bool
+    log_to_console: bool
 
 
 class FakeArizeOtel:
@@ -51,18 +69,12 @@ class FakeArizeOtel:
         fake = FakeArizeOtel()
         provider = create_tracer_provider(config, register_fn=fake.register)
 
-        fake.assert_registered_with(space_id="test-space", transport="HTTP")
+        fake.assert_registered_with(space_id="test-space", transport=Transport.HTTP)
         assert isinstance(provider, TracerProvider)
 
     WARNING: This is a temporary fixture. Prefer integration tests against
     real arize.otel when possible.
     """
-
-    class Transport:
-        """Fake Transport enum matching arize.otel.Transport."""
-
-        HTTP = "HTTP"
-        GRPC = "GRPC"
 
     def __init__(self, exporter: InMemorySpanExporter | None = None) -> None:
         """Initialize the fake with optional exporter for span capture."""
@@ -76,15 +88,32 @@ class FakeArizeOtel:
         api_key: str | None = None,
         project_name: str | None = None,
         endpoint: str | None = None,
-        transport: str = "HTTP",
+        transport: Transport = Transport.GRPC,
         batch: bool = True,
+        set_global_tracer_provider: bool = True,
+        headers: dict[str, str] | None = None,
+        verbose: bool = True,
         log_to_console: bool = False,
-        verbose: bool = False,
     ) -> TracerProvider:
         """Fake register that records calls and returns a real provider.
 
         This method has the same signature as arize.otel.register() and
         returns a real TracerProvider configured with an InMemorySpanExporter.
+
+        Args:
+            space_id: Arize space identifier.
+            api_key: Arize API key.
+            project_name: Project name for traces.
+            endpoint: OTLP endpoint URL.
+            transport: Transport protocol (GRPC, HTTP, HTTPS).
+            batch: Use BatchSpanProcessor if True, SimpleSpanProcessor if False.
+            set_global_tracer_provider: Set as global tracer provider.
+            headers: Additional headers for requests.
+            verbose: Print configuration details.
+            log_to_console: Log spans to console.
+
+        Returns:
+            A real TracerProvider configured with InMemorySpanExporter.
         """
         self.register_calls.append(
             RegisterCall(
@@ -94,8 +123,10 @@ class FakeArizeOtel:
                 endpoint=endpoint,
                 transport=transport,
                 batch=batch,
-                log_to_console=log_to_console,
+                set_global_tracer_provider=set_global_tracer_provider,
+                headers=headers,
                 verbose=verbose,
+                log_to_console=log_to_console,
             )
         )
 

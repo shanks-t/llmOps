@@ -205,14 +205,16 @@ service:
   version: "1.0.0"
 
 # Arize-specific configuration (used by llmops.arize.instrument())
+# These fields map directly to arize.otel.register() parameters
 arize:
   endpoint: "http://localhost:6006/v1/traces"
   project_name: "my-project"
   api_key: "${ARIZE_API_KEY}"
   space_id: "${ARIZE_SPACE_ID}"
   transport: "http"
-  batch_spans: true
-  debug: false
+  batch: true
+  log_to_console: false
+  verbose: false
 
 # MLflow-specific configuration (used by llmops.mlflow.instrument())
 mlflow:

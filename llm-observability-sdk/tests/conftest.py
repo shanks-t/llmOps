@@ -23,7 +23,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-from tests.fakes import FakeArizeOtel
+from tests.fakes import FakeArizeOtel, Transport
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -281,10 +281,11 @@ def patched_arize_otel(
             provider = create_tracer_provider(config)
             patched_arize_otel.assert_registered_with(space_id="test")
     """
+
     # Create a module-like object that has our fake's attributes
     class FakeArizeOtelModule:
         register = fake_arize_otel.register
-        Transport = FakeArizeOtel.Transport
+        Transport = Transport
 
     # Save original arize.otel module if it exists
     original_module = sys.modules.get("arize.otel")
