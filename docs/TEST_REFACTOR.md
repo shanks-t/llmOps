@@ -2,6 +2,56 @@
 
 This document outlines findings from a review of our test suite's use of mocks, evaluated against industry best practices and OpenTelemetry's testing patterns. The goal is to reduce brittleness, eliminate false confidence, and improve test reliability.
 
+## Progress Tracker
+
+| Task | Status | Commit | Notes |
+|------|--------|--------|-------|
+| P1.2: Add `arize-otel` test dependency | ✅ Done | (already in deps) | Was already a runtime dependency |
+| P3.2: Create `FakeArizeOtel` | ✅ Done | `8926621` | See `tests/fakes.py` |
+| P2.1: Extract mock fixtures to conftest.py | ✅ Done | `8926621` | `fake_arize_otel`, `patched_arize_otel` fixtures |
+| P2.3: Remove `importlib.reload()` anti-pattern | ✅ Done | `8926621` | No longer used in tests |
+| P1.1: Integration tests with real arize.otel | 🔲 TODO | — | Highest remaining priority |
+| P2.2: Test behavior, not mock calls | 🔲 TODO | — | Continue as files are touched |
+| P3.1: Separate unit/integration directories | 🔲 TODO | — | When enough integration tests exist |
+| P4.1: Property-based config tests | 🔲 TODO | — | Nice to have |
+| P4.2: pytest-opentelemetry | 🔲 TODO | — | Nice to have |
+
+### What Was Done (2024-01)
+
+1. **Created `tests/fakes.py`** with `FakeArizeOtel` class:
+   - Typed test double matching `arize.otel.register()` signature
+   - Catches typos at test time (unlike MagicMock)
+   - Returns real `TracerProvider` instances
+   - Provides assertion helpers: `assert_registered_once()`, `assert_registered_with()`
+
+2. **Updated `tests/conftest.py`**:
+   - Added `fake_arize_otel` fixture for dependency injection
+   - Added `patched_arize_otel` fixture for `sys.modules` patching
+   - Added `disable_mock_sdk_telemetry` marker support
+
+3. **Refactored `test_arize_telemetry_spec.py`**:
+   - Replaced 3 tests using `MagicMock` + `sys.modules` with `FakeArizeOtel`
+   - Removed `from unittest.mock import MagicMock, patch` imports
+   - Tests now verify config translation explicitly using typed assertions
+
+4. **Updated `pyproject.toml`**:
+   - Registered `disable_mock_sdk_telemetry` pytest marker
+
+### Remaining Work
+
+**High Priority:**
+- Add integration tests that use real `arize.otel` library (P1.1)
+- Continue refactoring tests to test behavior instead of implementation (P2.2)
+
+**Medium Priority:**
+- Separate unit vs integration tests into directories (P3.1)
+
+**Low Priority:**
+- Property-based tests for config parsing with `hypothesis` (P4.1)
+- `pytest-opentelemetry` for test observability (P4.2)
+
+---
+
 ## Background
 
 Our test suite was reviewed in the context of concerns raised about over-reliance on mocks:
@@ -35,21 +85,31 @@ Key concerns identified:
 
 ### Problem Areas
 
-#### 1. The `arize.otel` Mocking Pattern
+#### 1. The `arize.otel` Mocking Pattern ✅ ADDRESSED
 
-Location: `test_arize_telemetry_spec.py` (lines 53-77, 275-297, 652-672)
+> **Status:** Replaced with `FakeArizeOtel` in commit `8926621`. See `tests/fakes.py`.
+
+~~Location: `test_arize_telemetry_spec.py` (lines 53-77, 275-297, 652-672)~~
 
 ```python
+# OLD APPROACH (removed)
 mock_arize_otel = MagicMock()
 mock_arize_otel.register = MagicMock(return_value=mock_provider)
 with patch.dict("sys.modules", {"arize.otel": mock_arize_otel}):
     importlib.reload(telemetry_module)
+
+# NEW APPROACH (tests/fakes.py + conftest.py)
+@pytest.mark.disable_mock_sdk_telemetry
+def test_config_translation(patched_arize_otel, tmp_path):
+    provider = telemetry_module.create_tracer_provider(config)
+    patched_arize_otel.assert_registered_with(space_id="test-space")
 ```
 
-**Problems:**
-- Tests verify we *called* `register()` with certain args, not that it *works*
-- If `arize.otel` changes its API, tests pass but production breaks
-- The `importlib.reload()` pattern is fragile
+**Improvements made:**
+- ✅ `FakeArizeOtel` has typed method signatures (catches typos)
+- ✅ Returns real `TracerProvider` instances
+- ✅ No more `importlib.reload()` (arize.otel is imported at call time)
+- 🔲 Still need integration tests against real `arize.otel` for full confidence
 
 #### 2. Testing Implementation, Not Behavior
 
@@ -62,9 +122,19 @@ assert call_kwargs["transport"] == "HTTP"
 
 This couples tests to internal implementation rather than observable outcomes.
 
-#### 3. Repeated Mock Boilerplate
+#### 3. Repeated Mock Boilerplate ✅ ADDRESSED
 
-The arize.otel mock setup is repeated 4 times with subtle variations.
+> **Status:** Centralized in `conftest.py` fixtures (`fake_arize_otel`, `patched_arize_otel`).
+
+~~The arize.otel mock setup is repeated 4 times with subtle variations.~~
+
+Now tests use shared fixtures:
+```python
+def test_something(patched_arize_otel, tmp_path):
+    # patched_arize_otel is a FakeArizeOtel instance
+    # already patched into sys.modules
+    ...
+```
 
 ---
 
@@ -355,30 +425,30 @@ Instrument the test suite itself to identify slow tests and trace execution.
 
 ## Implementation Order
 
-| Step | Task | Effort | Unlocks |
-|------|------|--------|---------|
-| 1 | Add `arize-otel` as test dependency | Low | Steps 2-4 |
-| 2 | Create `FakeArizeOtel` | Medium | Better mock immediately |
-| 3 | Extract mock fixtures to conftest.py | Low | Reduces duplication |
-| 4 | Add integration test file | Medium | Real confidence |
-| 5 | Refactor tests to test behavior | Medium | As you touch each file |
-| 6 | Separate test directories | Low | When enough integration tests exist |
+| Step | Task | Effort | Unlocks | Status |
+|------|------|--------|---------|--------|
+| 1 | Add `arize-otel` as test dependency | Low | Steps 2-4 | ✅ Done |
+| 2 | Create `FakeArizeOtel` | Medium | Better mock immediately | ✅ Done |
+| 3 | Extract mock fixtures to conftest.py | Low | Reduces duplication | ✅ Done |
+| 4 | Add integration test file | Medium | Real confidence | 🔲 Next |
+| 5 | Refactor tests to test behavior | Medium | As you touch each file | 🔲 TODO |
+| 6 | Separate test directories | Low | When enough integration tests exist | 🔲 TODO |
 
 ---
 
 ## Summary Matrix
 
-| Priority | Refactor | Effort | Impact | Addresses |
-|----------|----------|--------|--------|-----------|
-| P1.1 | Replace `sys.modules` mock with real `arize.otel` | Medium-High | Very High | False confidence |
-| P1.2 | Add `arize-otel` test dependency | Low | High | Enables P1.1 |
-| P2.1 | Extract mock boilerplate to fixtures | Low | Medium | Brittleness |
-| P2.2 | Test behavior, not mock calls | Medium | High | False confidence |
-| P2.3 | Remove `importlib.reload()` pattern | Medium | Medium | Brittleness |
-| P3.1 | Explicit unit/integration separation | Low | Medium | Clarity |
-| P3.2 | `FakeArizeOtel` instead of `MagicMock` | Medium | Medium | False confidence |
-| P4.1 | Property-based config tests | Low | Low | Edge cases |
-| P4.2 | `pytest-opentelemetry` | Low | Low | Observability |
+| Priority | Refactor | Effort | Impact | Addresses | Status |
+|----------|----------|--------|--------|-----------|--------|
+| P1.1 | Replace `sys.modules` mock with real `arize.otel` | Medium-High | Very High | False confidence | 🔲 TODO |
+| P1.2 | Add `arize-otel` test dependency | Low | High | Enables P1.1 | ✅ Done |
+| P2.1 | Extract mock boilerplate to fixtures | Low | Medium | Brittleness | ✅ Done |
+| P2.2 | Test behavior, not mock calls | Medium | High | False confidence | 🔲 TODO |
+| P2.3 | Remove `importlib.reload()` pattern | Medium | Medium | Brittleness | ✅ Done |
+| P3.1 | Explicit unit/integration separation | Low | Medium | Clarity | 🔲 TODO |
+| P3.2 | `FakeArizeOtel` instead of `MagicMock` | Medium | Medium | False confidence | ✅ Done |
+| P4.1 | Property-based config tests | Low | Low | Edge cases | 🔲 TODO |
+| P4.2 | `pytest-opentelemetry` | Low | Low | Observability | 🔲 TODO |
 
 ---
 
