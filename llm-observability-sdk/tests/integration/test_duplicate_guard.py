@@ -1,8 +1,6 @@
-"""Contract tests for duplicate instrumentation prevention — PRD_02.
+"""Integration tests for duplicate instrumentation prevention.
 
-Executable contracts derived from:
-- PRD: docs/prd/PRD_02.md
-- API: docs/api_spec/API_SPEC_02.md
+Tests derived from PRD_02.
 
 Requirements covered:
 - F7: Duplicate calls log warning and skip
@@ -20,17 +18,13 @@ from opentelemetry.sdk.trace import TracerProvider
 if TYPE_CHECKING:
     from pathlib import Path
 
-# Traceability metadata
-PRD_ID = "PRD_02"
-API_SPEC_ID = "API_SPEC_02"
-CAPABILITY = "duplicate_guard"
 
-# Mark all tests as xfail until implementation is complete
-pytestmark = pytest.mark.xfail(reason="PRD_02 implementation pending", strict=False)
-
-
+@pytest.mark.integration
 class TestDuplicateInstrumentationGuard:
-    """Tests for preventing duplicate instrumentation."""
+    """Tests for preventing duplicate instrumentation.
+
+    PRD: PRD_02, Requirement: F7
+    """
 
     def test_warns_on_duplicate_call(
         self,
@@ -39,8 +33,7 @@ class TestDuplicateInstrumentationGuard:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         """
-        PRD: PRD_02
-        API: API_SPEC_02.instrument_existing_tracer()
+        PRD: PRD_02, Requirement: F7
 
         GIVEN instrument_existing_tracer() was already called on a provider
         WHEN it is called again on the same provider
@@ -75,8 +68,7 @@ arize:
         llmops_arize_module: Any,
     ) -> None:
         """
-        PRD: PRD_02
-        API: API_SPEC_02.instrument_existing_tracer()
+        PRD: PRD_02, Requirement: F7
 
         GIVEN instrument_existing_tracer() was already called on a provider
         WHEN it is called again on the same provider
@@ -111,55 +103,13 @@ arize:
         # Processor count should remain the same
         assert processor_count_after_second == processor_count_after_first
 
-    def test_allows_instrumentation_on_different_provider(
-        self,
-        tmp_path: "Path",
-        llmops_arize_module: Any,
-    ) -> None:
-        """
-        PRD: PRD_02
-        API: API_SPEC_02.instrument_existing_tracer()
 
-        GIVEN instrument_existing_tracer() was called on provider A
-        AND the global provider is changed to provider B
-        WHEN instrument_existing_tracer() is called again
-        THEN instrumentation is added to provider B (no warning)
-        """
-        # Note: This test requires resetting the internal tracking state
-        # which may need implementation support
-
-        config_content = """service:
-  name: test-service
-
-arize:
-  endpoint: https://otlp.arize.com/v1
-  space_id: test-space
-  api_key: test-key
-"""
-        config_path = tmp_path / "config.yaml"
-        config_path.write_text(config_content)
-
-        # First provider
-        provider_a = TracerProvider()
-        trace.set_tracer_provider(provider_a)
-        llmops_arize_module.instrument_existing_tracer(config_path=config_path)
-        processor_count_a = len(provider_a._active_span_processor._span_processors)
-
-        # Switch to different provider
-        provider_b = TracerProvider()
-        trace.set_tracer_provider(provider_b)
-
-        # Should be able to instrument provider B
-        llmops_arize_module.instrument_existing_tracer(config_path=config_path)
-        processor_count_b = len(provider_b._active_span_processor._span_processors)
-
-        # Both providers should have processors
-        assert processor_count_a > 0
-        assert processor_count_b > 0
-
-
+@pytest.mark.integration
 class TestIdempotency:
-    """Tests for idempotent behavior."""
+    """Tests for idempotent behavior.
+
+    PRD: PRD_02, Requirement: F7
+    """
 
     def test_multiple_calls_are_safe(
         self,
@@ -167,8 +117,7 @@ class TestIdempotency:
         llmops_arize_module: Any,
     ) -> None:
         """
-        PRD: PRD_02
-        API: API_SPEC_02.instrument_existing_tracer()
+        PRD: PRD_02, Requirement: F7
 
         GIVEN instrument_existing_tracer() is called multiple times
         WHEN the application runs

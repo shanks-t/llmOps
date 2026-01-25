@@ -50,8 +50,10 @@ packages = ["src/llmops"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
-    "e2e: end-to-end tests requiring Docker services (Phoenix/MLflow)",
-    "disable_mock_sdk_telemetry: disable the autouse mock_sdk_telemetry fixture for tests that verify real arize.otel interactions",
+    "unit: Fast isolated tests (no external deps)",
+    "integration: Tests against real libraries (FakeArizeOtel, real TracerProvider)",
+    "e2e: End-to-end tests requiring Docker services (Phoenix/MLflow)",
+    "disable_mock_sdk_telemetry: Disable the autouse mock_sdk_telemetry fixture for tests that verify real arize.otel interactions",
 ]
 addopts = "-m 'not e2e'"
 

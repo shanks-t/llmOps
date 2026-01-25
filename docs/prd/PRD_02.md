@@ -81,6 +81,8 @@ llmops.arize.instrument_existing_tracer(
 | Existing SDK TracerProvider required | Cannot add processors to NoOp providers reliably |
 | GenAI filtering uses OpenInference attribute | Standard from OpenInference instrumentors |
 | No atexit registration | User owns provider lifecycle |
+| Global TracerProvider is immutable | OpenTelemetry Python does not allow changing the global provider once set; duplicate tracking applies only within a single application lifecycle |
+| Resource attributes are immutable | TracerProvider Resource is set at construction and cannot be modified; project name must be injected as span attribute (`arize.project.name`) rather than Resource attribute (`openinference.project.name`) |
 
 ---
 

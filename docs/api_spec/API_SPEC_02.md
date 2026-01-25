@@ -199,7 +199,9 @@ llmops.arize.instrument_existing_tracer(endpoint="...", ...)
 # WARNING: Arize instrumentation already added to this TracerProvider. Skipping.
 ```
 
-**Implementation:** Provider instances are tracked by `id()`. If the global provider changes, a new processor can be added to the new provider.
+**Implementation:** A module-level boolean flag tracks whether instrumentation has been applied.
+
+**Note:** OpenTelemetry Python does not allow changing the global TracerProvider once set (`trace.set_tracer_provider()` can only be called once per process). Therefore, a simple boolean flag suffices for duplicate prevention within a single application lifecycle.
 
 ---
 
@@ -320,9 +322,43 @@ class OpenInferenceSpanFilter(SpanProcessor):
 
 ### 9.2 Duplicate Tracking
 
-**Location:** `llmops._platforms._instrument._instrumented_providers`
+**Location:** `llmops._platforms.arize._arize_instrumentation_applied`
 
-Module-level set tracking provider IDs that have been instrumented.
+Module-level boolean flag indicating whether Arize instrumentation has been applied. Since OpenTelemetry Python does not allow changing the global TracerProvider once set, a simple boolean suffices for duplicate prevention within a single application lifecycle.
+
+### 9.3 ArizeProjectNameInjector
+
+Internal span processor that injects the `arize.project.name` span attribute.
+
+**Location:** `llmops._internal.span_filter.ArizeProjectNameInjector`
+
+**Purpose:** When using `instrument_existing_tracer()`, we cannot modify the existing TracerProvider's Resource attributes. Arize requires either:
+- `openinference.project.name` as a Resource attribute (set by `arize.otel.register()`), OR
+- `arize.project.name` as a Span attribute
+
+This processor injects the span attribute on every span during `on_start()`.
+
+```python
+class ArizeProjectNameInjector(SpanProcessor):
+    """Injects arize.project.name span attribute for Arize routing."""
+    
+    def __init__(self, delegate: SpanProcessor, project_name: str) -> None: ...
+    def on_start(self, span, parent_context=None) -> None: ...
+    def on_end(self, span) -> None: ...
+    def shutdown(self) -> None: ...
+    def force_flush(self, timeout_millis=None) -> bool: ...
+```
+
+**Processor Chain Order:**
+
+When both `project_name` and `filter_to_genai_spans=True` are configured, the processor chain is:
+
+```
+ArizeProjectNameInjector → OpenInferenceSpanFilter → BatchSpanProcessor
+         (outer)                  (middle)                (inner)
+```
+
+The injector must be the outermost wrapper so `on_start()` is called first to set the attribute before the span is processed by inner processors.
 
 ---
 

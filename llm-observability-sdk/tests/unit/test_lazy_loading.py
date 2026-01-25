@@ -1,8 +1,6 @@
-"""Contract tests for lazy-loading platform modules — PRD_01.
+"""Unit tests for lazy-loading platform modules.
 
-Executable contracts derived from:
-- PRD: docs/prd/PRD_01.md
-- API: docs/api_spec/API_SPEC_01.md
+Tests derived from PRD_01.
 
 Requirements covered:
 - F5: Platform modules are lazy-imported (no import-time side effects)
@@ -18,19 +16,17 @@ from typing import Any
 
 import pytest
 
-# Traceability metadata
-PRD_ID = "PRD_01"
-API_SPEC_ID = "API_SPEC_01"
-CAPABILITY = "lazy_loading"
 
-
+@pytest.mark.unit
 class TestLazyLoading:
-    """Tests for lazy platform module loading."""
+    """Tests for lazy platform module loading.
+
+    PRD: PRD_01, Requirements: F5, N8
+    """
 
     def test_import_llmops_does_not_import_platform_deps(self) -> None:
         """
-        PRD: PRD_01
-        API: API_SPEC_01.llmops.__getattr__
+        PRD: PRD_01, Requirement: F5, N8
 
         GIVEN the SDK is imported
         WHEN import llmops is executed
@@ -47,8 +43,7 @@ class TestLazyLoading:
 
     def test_accessing_platform_attribute_imports_module(self) -> None:
         """
-        PRD: PRD_01
-        API: API_SPEC_01.llmops.__getattr__
+        PRD: PRD_01, Requirement: F5
 
         GIVEN the SDK is imported
         WHEN llmops.arize is accessed
@@ -61,16 +56,19 @@ class TestLazyLoading:
         assert arize_module is not None
 
 
+@pytest.mark.unit
 class TestDependencyErrors:
-    """Tests for helpful ImportError messages when deps are missing."""
+    """Tests for helpful ImportError messages when deps are missing.
+
+    PRD: PRD_01, Requirements: F11, N7
+    """
 
     def test_missing_arize_deps_raise_helpful_error(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """
-        PRD: PRD_01
-        API: API_SPEC_01.llmops.arize.instrument()
+        PRD: PRD_01, Requirement: F11
 
         GIVEN arize.otel is not installed
         WHEN llmops.arize.instrument() is called
@@ -96,8 +94,7 @@ class TestDependencyErrors:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """
-        PRD: PRD_01
-        API: API_SPEC_01.llmops.mlflow.instrument()
+        PRD: PRD_01, Requirement: F11
 
         GIVEN mlflow is not installed
         WHEN llmops.mlflow.instrument() is called

@@ -10,11 +10,41 @@ This document outlines findings from a review of our test suite's use of mocks, 
 | P3.2: Create `FakeArizeOtel` | ✅ Done | `8926621` | See `tests/fakes.py` |
 | P2.1: Extract mock fixtures to conftest.py | ✅ Done | `8926621` | `fake_arize_otel`, `patched_arize_otel` fixtures |
 | P2.3: Remove `importlib.reload()` anti-pattern | ✅ Done | `8926621` | No longer used in tests |
+| P3.1: Separate unit/integration directories | ✅ Done | `feat/PRD_02` | See `tests/unit/` and `tests/integration/` |
 | P1.1: Integration tests with real arize.otel | 🔲 TODO | — | Highest remaining priority |
 | P2.2: Test behavior, not mock calls | 🔲 TODO | — | Continue as files are touched |
-| P3.1: Separate unit/integration directories | 🔲 TODO | — | When enough integration tests exist |
 | P4.1: Property-based config tests | 🔲 TODO | — | Nice to have |
 | P4.2: pytest-opentelemetry | 🔲 TODO | — | Nice to have |
+
+### What Was Done (2025-01) — Directory Restructure
+
+Refactored from PRD-based directory structure (`prd_01/`, `prd_02/`) to test-type-based structure:
+
+```
+tests/
+├── unit/                              # Fast, isolated tests
+│   ├── test_config.py                 # Config parsing, defaults, env vars
+│   ├── test_lazy_loading.py           # Module import behavior
+│   ├── test_platform_isolation.py     # Platform registry, cross-config
+│   ├── test_span_filter.py            # OpenInferenceSpanFilter (xfail)
+│   └── test_validation.py             # Strict/permissive mode
+├── integration/                       # Real components, FakeArizeOtel
+│   ├── test_arize_instrument.py       # Full instrument() flow
+│   ├── test_arize_telemetry.py        # Config→arize.otel.register()
+│   ├── test_auto_instrumentation.py   # Google ADK/GenAI instrumentors
+│   ├── test_duplicate_guard.py        # Idempotency (xfail)
+│   ├── test_instrument_existing.py    # Adding to existing provider (xfail)
+│   └── test_mlflow_instrument.py      # MLflow skeleton
+├── conftest.py                        # Shared fixtures
+├── fakes.py                           # FakeArizeOtel test double
+└── COVERAGE.md                        # PRD → Test mapping
+```
+
+**Key changes:**
+1. Added pytest markers: `@pytest.mark.unit`, `@pytest.mark.integration`
+2. PRD traceability preserved via docstrings (`PRD: PRD_01, Requirement: F1`)
+3. New justfile commands: `just test-unit`, `just test-integration`
+4. Created `tests/COVERAGE.md` with comprehensive requirement-to-test mapping
 
 ### What Was Done (2024-01)
 
@@ -42,9 +72,6 @@ This document outlines findings from a review of our test suite's use of mocks, 
 **High Priority:**
 - Add integration tests that use real `arize.otel` library (P1.1)
 - Continue refactoring tests to test behavior instead of implementation (P2.2)
-
-**Medium Priority:**
-- Separate unit vs integration tests into directories (P3.1)
 
 **Low Priority:**
 - Property-based tests for config parsing with `hypothesis` (P4.1)
