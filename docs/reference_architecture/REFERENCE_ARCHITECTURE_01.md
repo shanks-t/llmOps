@@ -1,14 +1,15 @@
-# PRD_01 — Reference Architecture
+# Reference Architecture
 
-**Version:** 0.2
-**Date:** 2026-01-22
+**Version:** 0.3
+**Date:** 2026-01-26
 **Status:** Draft
+**Covers:** PRD_01 (Auto-Instrumentation), PRD_03 (Evaluator Templates)
 
 ---
 
 ## 1. Purpose
 
-This document defines how the PRD_01 system should be built. It codifies architectural invariants, boundaries, and patterns for a **multi-platform auto-instrumentation SDK** with explicit platform selection.
+This document defines how the llmops SDK should be built. It codifies architectural invariants, boundaries, and patterns for a **multi-platform SDK** with explicit platform selection and multiple capabilities (telemetry, evaluation).
 
 ---
 
@@ -16,14 +17,30 @@ This document defines how the PRD_01 system should be built. It codifies archite
 
 ### 2.1 Components
 
+#### Core Components
+
 | Component | Responsibility | Notes |
 |-----------|----------------|-------|
 | **Package Root** | Lazy platform accessors via `__getattr__` | No platform deps at import |
-| **Platform Module** | `<platform>.instrument()` entry point | One per supported backend |
+| **Platform Module** | Platform capabilities entry point | One per supported backend |
+
+#### Telemetry Components (PRD_01)
+
+| Component | Responsibility | Notes |
+|-----------|----------------|-------|
 | **Platform Implementation** | Backend-specific TracerProvider creation | Uses platform's SDK (arize.otel, mlflow) |
 | **Shared Config Loader** | Read YAML, substitute env vars | Platform-agnostic |
 | **Platform Config Parser** | Extract platform section, validate | Platform-specific validation |
 | **Instrumentor Runner** | Apply auto-instrumentation | Shared; uses platform's registry |
+
+#### Evaluation Components (PRD_03)
+
+| Component | Responsibility | Notes |
+|-----------|----------------|-------|
+| **Evals Module** | Platform-specific evaluation API | Lazy-loaded via `__getattr__` |
+| **Template Factory** | Create evaluators from templates | Wraps phoenix.evals |
+| **Built-in Templates** | Pre-configured evaluators | Faithfulness, etc. |
+| **Evaluator Registry** | Named storage of evaluators | In-memory, thread-safe |
 
 ### 2.2 Layer Diagram
 
@@ -31,43 +48,48 @@ This document defines how the PRD_01 system should be built. It codifies archite
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                            PUBLIC API LAYER                              │
 │                                                                         │
-│   llmops.arize.instrument()    llmops.mlflow.instrument()               │
+│   TELEMETRY (PRD_01)                    EVALUATION (PRD_03)             │
+│   llmops.arize.instrument()             llmops.arize.evals.faithfulness()│
+│   llmops.mlflow.instrument()            llmops.arize.evals.create_classifier()│
 │                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
+                    │                                    │
+                    ▼                                    ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                           PLATFORM LAYER                                 │
 │                                                                         │
-│   ┌─────────────────────┐    ┌─────────────────────┐                    │
-│   │   ArizePlatform     │    │   MLflowPlatform    │                    │
-│   │   - arize.otel      │    │   - (skeleton)      │                    │
-│   │   - OpenInference   │    │   - MLflow tracing  │                    │
-│   └─────────────────────┘    └─────────────────────┘                    │
-│                                                                         │
-│   All implement: Platform Protocol                                      │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                      SHARED INFRASTRUCTURE LAYER                         │
-│                                                                         │
-│   ┌──────────────┐  ┌──────────────┐  ┌──────────────────────────────┐  │
-│   │Config Loader │  │  Validation  │  │   Instrumentor Runner        │  │
-│   │(YAML + env)  │  │(strict/perm) │  │   (registry-based)           │  │
-│   └──────────────┘  └──────────────┘  └──────────────────────────────┘  │
+│   ┌─────────────────────────────────┐    ┌─────────────────────┐       │
+│   │        ArizePlatform            │    │   MLflowPlatform    │       │
+│   │  ┌───────────┬────────────┐     │    │   - (skeleton)      │       │
+│   │  │ Telemetry │   Evals    │     │    │                     │       │
+│   │  │ arize.otel│phoenix.eval│     │    │                     │       │
+│   │  └───────────┴────────────┘     │    │                     │       │
+│   └─────────────────────────────────┘    └─────────────────────┘       │
 │                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         EXTERNAL DEPENDENCIES                            │
-│                                                                         │
-│   arize-otel          mlflow            opentelemetry-sdk               │
-│   openinference-*     mlflow-genai      opentelemetry-api               │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
+          │                     │
+          ▼                     ▼
+┌──────────────────────────┐  ┌──────────────────────────────────────────┐
+│  TELEMETRY INFRASTRUCTURE │  │      EVALUATION INFRASTRUCTURE          │
+│                          │  │                                          │
+│  ┌──────────────┐        │  │  ┌──────────────┐  ┌─────────────────┐   │
+│  │Config Loader │        │  │  │Template Fctry│  │Evaluator Registr│   │
+│  │(YAML + env)  │        │  │  │(factories)   │  │(in-memory)      │   │
+│  └──────────────┘        │  │  └──────────────┘  └─────────────────┘   │
+│  ┌──────────────┐        │  │                                          │
+│  │ Instrumentor │        │  │                                          │
+│  │   Runner     │        │  │                                          │
+│  └──────────────┘        │  │                                          │
+└──────────────────────────┘  └──────────────────────────────────────────┘
+          │                                    │
+          ▼                                    ▼
+┌──────────────────────────┐  ┌──────────────────────────────────────────┐
+│   EXTERNAL: TELEMETRY    │  │        EXTERNAL: EVALUATION              │
+│                          │  │                                          │
+│   arize-otel             │  │   arize-phoenix-evals                    │
+│   openinference-*        │  │   LLM SDKs (openai, anthropic, etc.)     │
+│   opentelemetry-sdk      │  │                                          │
+└──────────────────────────┘  └──────────────────────────────────────────┘
 ```
 
 ### 2.3 Dependency Rules
@@ -78,23 +100,34 @@ This document defines how the PRD_01 system should be built. It codifies archite
 Package Root
      │
      ▼
-Platform Module ──────────────────────────┐
-     │                                    │
-     ▼                                    ▼
-Platform Implementation          Shared Config Loader
-     │                                    │
-     ▼                                    ▼
-Platform SDK (arize.otel)        Validation Utils
+Platform Module
      │
+     ├──────────────────────────────────────────────┐
+     │                                              │
+     ▼                                              ▼
+Telemetry Capability                    Evaluation Capability
+     │                                              │
+     ├─▶ Platform Implementation                    ├─▶ Evals Module
+     │        │                                     │        │
+     │        ▼                                     │        ▼
+     │   Platform SDK (arize.otel)                  │   phoenix.evals
+     │        │                                     │        │
+     │        ▼                                     │        ▼
+     │   Instrumentor Runner                        │   Evaluator Registry
+     │                                              │
+     ▼                                              │
+Shared Config Loader ◀──────────────────────────────┘
+     │                   (future: config-driven evals)
      ▼
-Instrumentor Runner (shared)
+Validation Utils
 ```
 
 **Rules:**
 - No component may depend on a higher-level component
 - Platform implementations may not depend on each other
-- Shared infrastructure may not depend on any platform
-- Platform modules depend on their specific external SDK
+- Capabilities within a platform are independent (evals doesn't require telemetry)
+- Shared infrastructure may not depend on any platform or capability
+- Each capability depends on its specific external SDK
 
 ---
 
@@ -102,43 +135,22 @@ Instrumentor Runner (shared)
 
 These invariants must hold across all implementations.
 
-### 3.1 Telemetry Safety
+### Shared Invariants
+
+### 3.1 Lazy Loading
 
 ```
-INVARIANT 1: Telemetry never breaks business logic
-```
-
-**Rules:**
-- No SDK call raises exceptions to user code after initialization
-- `instrument()` logs failures and returns safely (permissive mode)
-- Instrumentor errors do not prevent application startup
-- Configuration errors fail fast at startup, not during runtime
-
-### 3.2 Explicit Platform Selection
-
-```
-INVARIANT 2: Platform selection is always explicit in the API call
-```
-
-**Rules:**
-- Users must call `llmops.<platform>.instrument()`
-- No auto-detection of platform from config or environment
-- No default platform if none specified
-- Platform name is visible in the import/call site
-
-### 3.3 Lazy Platform Loading
-
-```
-INVARIANT 3: Platform dependencies are not imported until platform is accessed
+INVARIANT 1: Dependencies are not imported until accessed
 ```
 
 **Rules:**
 - `import llmops` must succeed without any platform dependencies installed
 - Platform module is loaded only on first attribute access
-- Missing platform dependencies raise `ImportError` at access time, not import time
+- Sub-capabilities (e.g., `arize.evals`) are loaded only when accessed
+- Missing dependencies raise `ImportError` at access time, not import time
 - Error message includes installation instructions
 
-**Implementation Pattern:**
+**Implementation Pattern (Platform):**
 ```python
 # llmops/__init__.py
 def __getattr__(name: str):
@@ -151,22 +163,69 @@ def __getattr__(name: str):
     raise AttributeError(f"module 'llmops' has no attribute '{name}'")
 ```
 
-### 3.4 Platform Isolation
+**Implementation Pattern (Sub-capability):**
+```python
+# llmops/arize.py
+def __getattr__(name: str):
+    if name == "evals":
+        from llmops.evals import arize as _evals
+        return _evals
+    raise AttributeError(f"module 'llmops.arize' has no attribute '{name}'")
+```
+
+### 3.2 Explicit Platform Selection
 
 ```
-INVARIANT 4: Platforms are independent and isolated
+INVARIANT 2: Platform selection is always explicit in the API call
+```
+
+**Rules:**
+- Users must call `llmops.<platform>.*`
+- No auto-detection of platform from config or environment
+- No default platform if none specified
+- Platform name is visible in the import/call site
+
+### 3.3 Platform Isolation
+
+```
+INVARIANT 3: Platforms are independent and isolated
 ```
 
 **Rules:**
 - Adding a new platform requires no changes to existing platform code
-- Each platform owns its TracerProvider lifecycle
 - Platform implementations do not share mutable state
 - Configuration sections are platform-specific (`arize:`, `mlflow:`)
 
-### 3.5 Single Backend Per Call
+### 3.4 Capability Isolation
 
 ```
-INVARIANT 5: Each instrument() call configures exactly one backend
+INVARIANT 4: Capabilities within a platform are independent
+```
+
+**Rules:**
+- Evaluation does not require telemetry to be initialized
+- Telemetry does not require evaluation
+- Each capability has its own dependency chain
+- Adding a new capability requires no changes to existing capabilities
+
+### Telemetry Invariants (PRD_01)
+
+### 3.5 Telemetry Safety
+
+```
+INVARIANT 5: Telemetry never breaks business logic
+```
+
+**Rules:**
+- No SDK call raises exceptions to user code after initialization
+- `instrument()` logs failures and returns safely (permissive mode)
+- Instrumentor errors do not prevent application startup
+- Configuration errors fail fast at startup, not during runtime
+
+### 3.6 Single Backend Per Call
+
+```
+INVARIANT 6: Each instrument() call configures exactly one backend
 ```
 
 **Rules:**
@@ -174,10 +233,10 @@ INVARIANT 5: Each instrument() call configures exactly one backend
 - No multi-backend routing within a single call
 - Calling multiple platforms' `instrument()` is undefined behavior (user error)
 
-### 3.6 Configuration Source of Truth
+### 3.7 Configuration Source of Truth
 
 ```
-INVARIANT 6: Configuration requires explicit path selection
+INVARIANT 7: Configuration requires explicit path selection
 ```
 
 **Rules:**
@@ -185,6 +244,31 @@ INVARIANT 6: Configuration requires explicit path selection
 - Each platform reads shared sections plus its own section
 - Environment variables override file values
 - Only one config file is used per process
+
+### Evaluation Invariants (PRD_03)
+
+### 3.8 LLM Configuration Ownership
+
+```
+INVARIANT 8: LLM configuration is user-provided for evaluations
+```
+
+**Rules:**
+- SDK does not manage LLM API keys or model selection
+- Users create LLM instances and pass to factory/template functions
+- No config file section for eval LLMs (in PRD_03 scope)
+
+### 3.9 Registry Scope
+
+```
+INVARIANT 9: Evaluator registry is process-local and non-persistent
+```
+
+**Rules:**
+- In-memory storage only; clears when process ends
+- Thread-safe for concurrent access
+- Duplicate names overwrite without error
+- Missing names raise `KeyError`
 
 ---
 
@@ -301,6 +385,62 @@ Validation occurs during `instrument()` only:
 - **Permissive (prod, default)**: logs warning, returns no-op provider
 
 Each platform validates its own configuration section. Shared infrastructure validates common sections (`service:`, `validation:`).
+
+### 5.4 Evaluation Initialization (PRD_03)
+
+```
+llmops.arize.evals.faithfulness(llm)
+  │
+  ├─▶ Trigger lazy load of evals module
+  │     └─▶ llmops/arize.py __getattr__("evals")
+  │
+  ├─▶ Check evaluation dependencies installed
+  │     └─▶ ImportError if missing (with pip install hint)
+  │
+  ├─▶ Create FaithfulnessEvaluator
+  │     └─▶ Wraps phoenix.evals.metrics.FaithfulnessEvaluator
+  │
+  └─▶ Return configured evaluator
+```
+
+```
+llmops.arize.evals.create_classifier(name, prompt, llm, choices)
+  │
+  ├─▶ Check evaluation dependencies installed
+  │
+  ├─▶ Create ClassificationEvaluator
+  │     └─▶ Wraps phoenix.evals.ClassificationEvaluator
+  │
+  └─▶ Return configured evaluator
+```
+
+### 5.5 Registry Operations (PRD_03)
+
+```python
+# Registry implementation pattern
+import threading
+
+_REGISTRY: dict[str, Evaluator] = {}
+_LOCK = threading.Lock()
+
+def register(name: str, evaluator: Evaluator) -> None:
+    with _LOCK:
+        _REGISTRY[name] = evaluator  # Overwrites if exists
+
+def get(name: str) -> Evaluator:
+    with _LOCK:
+        if name not in _REGISTRY:
+            raise KeyError(f"Evaluator '{name}' not registered")
+        return _REGISTRY[name]
+
+def list() -> list[str]:
+    with _LOCK:
+        return list(_REGISTRY.keys())
+
+def clear() -> None:
+    with _LOCK:
+        _REGISTRY.clear()
+```
 
 ---
 
@@ -520,6 +660,59 @@ INVARIANT 7: New platforms require no changes to existing platforms
 2. Add optional dependency to platform's extras
 3. No code changes required elsewhere
 
+### 9.3 Adding a New Built-in Evaluator Template (PRD_03)
+
+```
+INVARIANT: New templates require no changes to existing templates
+```
+
+**Steps to add a built-in template:**
+
+1. **Add template implementation** (`llmops/evals/arize/_templates.py`):
+   ```python
+   def relevance(llm: LLM) -> Evaluator:
+       from phoenix.evals.metrics import DocumentRelevanceEvaluator
+       return DocumentRelevanceEvaluator(llm=llm)
+   ```
+
+2. **Export from public module** (`llmops/evals/arize/__init__.py`):
+   ```python
+   from llmops.evals.arize._templates import faithfulness, relevance
+   ```
+
+3. **Add optional dependency if needed** (`pyproject.toml`):
+   ```toml
+   [project.optional-dependencies]
+   arize-evals = ["arize-phoenix-evals>=2.0.0"]
+   ```
+
+### 9.4 Adding Evaluation to a New Platform
+
+**Steps to add evaluation capability to a platform:**
+
+1. **Create evals module** (`llmops/evals/newplatform/`):
+   ```
+   llmops/evals/newplatform/
+   ├── __init__.py      # Public API
+   ├── _registry.py     # Evaluator registry
+   └── _templates.py    # Built-in templates
+   ```
+
+2. **Add lazy accessor** (`llmops/newplatform.py`):
+   ```python
+   def __getattr__(name: str):
+       if name == "evals":
+           from llmops.evals import newplatform as _evals
+           return _evals
+       raise AttributeError(...)
+   ```
+
+3. **Add optional dependencies** (`pyproject.toml`):
+   ```toml
+   [project.optional-dependencies]
+   newplatform-evals = ["newplatform-evals-lib>=1.0"]
+   ```
+
 ---
 
 ## 10. Package Structure
@@ -529,17 +722,24 @@ llmops/
 ├── __init__.py              # Lazy accessors, version, ConfigurationError re-export
 ├── exceptions.py            # ConfigurationError definition
 ├── config.py                # Shared config loading (YAML, env vars)
-├── arize.py                 # Public module: llmops.arize.instrument()
+├── arize.py                 # Public module: llmops.arize.* (+ __getattr__ for evals)
 ├── mlflow.py                # Public module: llmops.mlflow.instrument() (skeleton)
-├── _platforms/
+├── _platforms/              # Telemetry implementations (PRD_01)
 │   ├── __init__.py
 │   ├── _base.py             # Platform Protocol definition
 │   ├── _registry.py         # Shared instrumentor runner
+│   ├── _instrument.py       # Shared instrumentation flow
 │   ├── arize.py             # ArizePlatform implementation
 │   └── mlflow.py            # MLflowPlatform implementation (skeleton)
-└── _internal/
-    ├── __init__.py
-    └── telemetry.py         # Shared telemetry utilities (no-op provider, etc.)
+├── _internal/
+│   ├── __init__.py
+│   └── telemetry.py         # Shared telemetry utilities (no-op provider, etc.)
+└── evals/                   # Evaluation implementations (PRD_03)
+    ├── __init__.py          # Package marker
+    └── arize/               # Arize platform evals
+        ├── __init__.py      # Public API: faithfulness, create_classifier, etc.
+        ├── _registry.py     # In-memory evaluator registry
+        └── _templates.py    # Built-in template implementations
 ```
 
 ---
@@ -591,12 +791,13 @@ def test_missing_arize_deps_raises_helpful_error(monkeypatch):
 
 | Document | Purpose |
 |----------|---------|
-| `docs/prd/PRD_01.md` | Requirements and success criteria |
+| `docs/prd/PRD_01.md` | Auto-instrumentation requirements |
+| `docs/prd/PRD_03.md` | Evaluator templates requirements |
 | `docs/CONCEPTUAL_ARCHITECTURE.md` | High-level conceptual view |
-| `docs/api_spec/API_SPEC_01.md` | Public interfaces and configuration contracts |
+| `docs/api_spec/API_SPEC_01.md` | Telemetry public interfaces |
 | `docs/analysis/PLATFORM_ARCHITECTURE_ANALYSIS.md` | Analysis of design options |
 
 ---
 
 **Document Owner:** Platform Team
-**Last Updated:** 2026-01-22
+**Last Updated:** 2026-01-26
