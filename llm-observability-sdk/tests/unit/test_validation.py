@@ -1,8 +1,6 @@
-"""Contract tests for Arize validation modes — PRD_01.
+"""Unit tests for validation mode behavior.
 
-Executable contracts derived from:
-- PRD: docs/prd/PRD_01.md
-- API: docs/api_spec/API_SPEC_01.md
+Tests derived from PRD_01.
 
 Requirements covered:
 - N1: Telemetry failures do not raise exceptions to user code
@@ -20,14 +18,13 @@ import pytest
 if TYPE_CHECKING:
     from pathlib import Path
 
-# Traceability metadata
-PRD_ID = "PRD_01"
-API_SPEC_ID = "API_SPEC_01"
-CAPABILITY = "arize_validation"
 
-
+@pytest.mark.unit
 class TestArizePermissiveMode:
-    """Tests for permissive validation mode behavior."""
+    """Tests for permissive validation mode behavior.
+
+    PRD: PRD_01, Requirement: N5
+    """
 
     def test_permissive_mode_returns_noop_on_invalid_config(
         self,
@@ -35,8 +32,7 @@ class TestArizePermissiveMode:
         llmops_arize_module: Any,
     ) -> None:
         """
-        PRD: PRD_01
-        API: API_SPEC_01.llmops.arize.instrument()
+        PRD: PRD_01, Requirement: N5
 
         GIVEN a config file with validation mode set to "permissive"
         AND the config file is missing required fields
@@ -56,8 +52,12 @@ class TestArizePermissiveMode:
         assert provider is not None
 
 
+@pytest.mark.unit
 class TestArizeStrictMode:
-    """Tests for strict validation mode behavior."""
+    """Tests for strict validation mode behavior.
+
+    PRD: PRD_01, Requirement: N6
+    """
 
     def test_strict_mode_raises_error_on_invalid_config(
         self,
@@ -65,8 +65,7 @@ class TestArizeStrictMode:
         llmops_arize_module: Any,
     ) -> None:
         """
-        PRD: PRD_01
-        API: API_SPEC_01.llmops.arize.instrument()
+        PRD: PRD_01, Requirement: N6
 
         GIVEN a config file with validation mode set to "strict"
         AND the config file is missing required fields
@@ -84,8 +83,12 @@ class TestArizeStrictMode:
             llmops_arize_module.instrument(config_path=config_path)
 
 
+@pytest.mark.unit
 class TestArizeTelemetryIsolation:
-    """Tests for telemetry isolation from business logic."""
+    """Tests for telemetry isolation from business logic.
+
+    PRD: PRD_01, Requirements: N1, N2
+    """
 
     def test_telemetry_failure_never_propagates_to_caller(
         self,
@@ -93,8 +96,7 @@ class TestArizeTelemetryIsolation:
         llmops_arize_module: Any,
     ) -> None:
         """
-        PRD: PRD_01
-        API: API_SPEC_01.llmops.arize.instrument()
+        PRD: PRD_01, Requirement: N1, N2
 
         GIVEN a valid config file with permissive validation
         AND the application has business logic that initializes telemetry
@@ -126,8 +128,7 @@ class TestArizeTelemetryIsolation:
         llmops_arize_module: Any,
     ) -> None:
         """
-        PRD: PRD_01
-        API: API_SPEC_01.llmops.arize.instrument()
+        PRD: PRD_01, Requirement: N1, N2
 
         GIVEN a successfully initialized SDK
         WHEN telemetry operations fail at runtime (e.g., network errors)

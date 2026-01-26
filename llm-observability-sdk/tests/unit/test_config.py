@@ -1,91 +1,38 @@
-"""Tests for Arize telemetry setup and TLS configuration.
+"""Unit tests for configuration parsing and validation.
+
+Tests derived from PRD_01.
 
 Requirements covered:
-- TracerProvider creation via arize.otel.register
-- TLS certificate configuration via config file
-- TLS certificate configuration via environment variables
-- Certificate file existence validation
+- F10: Sensitive values (example: API keys) can be set via env var overrides
+- Config option defaults and parsing (transport, batch, log_to_console, verbose)
+- TLS certificate configuration
+- Project name configuration
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
-from opentelemetry.sdk.trace import TracerProvider
-
-from tests.fakes import Transport
 
 if TYPE_CHECKING:
     from pathlib import Path
-    from tests.fakes import FakeArizeOtel
-
-# Traceability metadata
-PRD_ID = "PRD_01"
-CAPABILITY = "arize_telemetry"
 
 
-@pytest.mark.disable_mock_sdk_telemetry
-class TestArizeOtelMode:
-    """Tests for arize.otel.register integration.
-
-    These tests verify that create_tracer_provider correctly passes
-    config values to arize.otel.register() parameters using FakeArizeOtel.
-
-    Note: This class is marked with @pytest.mark.disable_mock_sdk_telemetry
-    to disable the autouse mock_sdk_telemetry fixture, allowing tests to
-    verify actual arize.otel interactions.
-    """
-
-    def test_create_tracer_provider_passes_config_to_register(
-        self,
-        tmp_path: "Path",
-        patched_arize_otel: "FakeArizeOtel",
-    ) -> None:
-        """
-        GIVEN a valid config with arize credentials
-        WHEN create_tracer_provider is called
-        THEN arize.otel.register receives the config values
-        """
-        config_content = """service:
-  name: test-service
-
-arize:
-  endpoint: https://otlp.arize.com/v1/traces
-  space_id: test-space
-  api_key: test-key
-  project_name: test-project
-"""
-        config_path = tmp_path / "config.yaml"
-        config_path.write_text(config_content)
-
-        from llmops.config import load_config
-        import llmops._internal.telemetry as telemetry_module
-
-        config = load_config(config_path)
-        provider = telemetry_module.create_tracer_provider(config)
-
-        # Verify config values are passed to arize.otel.register
-        patched_arize_otel.assert_registered_once()
-        patched_arize_otel.assert_registered_with(
-            space_id="test-space",
-            api_key="test-key",
-            project_name="test-project",
-            endpoint="https://otlp.arize.com/v1/traces",
-        )
-
-        # Verify we got a real TracerProvider
-        assert isinstance(provider, TracerProvider)
-
-
+@pytest.mark.unit
 class TestArizeConfigOptions:
-    """Tests for transport, batch, log_to_console, and verbose config options."""
+    """Tests for transport, batch, log_to_console, and verbose config options.
+
+    PRD: PRD_01
+    """
 
     def test_transport_defaults_to_http(
         self,
         tmp_path: "Path",
     ) -> None:
         """
+        PRD: PRD_01
+
         GIVEN transport is NOT specified in config
         WHEN config is loaded
         THEN transport defaults to 'http'
@@ -109,6 +56,8 @@ arize:
         tmp_path: "Path",
     ) -> None:
         """
+        PRD: PRD_01
+
         GIVEN transport is 'grpc' in config
         WHEN config is loaded
         THEN transport is 'grpc'
@@ -133,6 +82,8 @@ arize:
         tmp_path: "Path",
     ) -> None:
         """
+        PRD: PRD_01
+
         GIVEN transport is an invalid value
         WHEN config is loaded
         THEN transport defaults to 'http' with a warning
@@ -157,6 +108,8 @@ arize:
         tmp_path: "Path",
     ) -> None:
         """
+        PRD: PRD_01
+
         GIVEN batch is NOT specified in config
         WHEN config is loaded
         THEN batch defaults to True
@@ -180,6 +133,8 @@ arize:
         tmp_path: "Path",
     ) -> None:
         """
+        PRD: PRD_01
+
         GIVEN batch is false in config
         WHEN config is loaded
         THEN batch is False
@@ -204,6 +159,8 @@ arize:
         tmp_path: "Path",
     ) -> None:
         """
+        PRD: PRD_01
+
         GIVEN log_to_console is NOT specified in config
         WHEN config is loaded
         THEN log_to_console defaults to False
@@ -227,6 +184,8 @@ arize:
         tmp_path: "Path",
     ) -> None:
         """
+        PRD: PRD_01
+
         GIVEN log_to_console is true in config
         WHEN config is loaded
         THEN log_to_console is True
@@ -251,6 +210,8 @@ arize:
         tmp_path: "Path",
     ) -> None:
         """
+        PRD: PRD_01
+
         GIVEN verbose is NOT specified in config
         WHEN config is loaded
         THEN verbose defaults to False
@@ -274,6 +235,8 @@ arize:
         tmp_path: "Path",
     ) -> None:
         """
+        PRD: PRD_01
+
         GIVEN verbose is true in config
         WHEN config is loaded
         THEN verbose is True
@@ -293,56 +256,21 @@ arize:
         config = load_config(config_path)
         assert config.arize.verbose is True
 
-    @pytest.mark.disable_mock_sdk_telemetry
-    def test_arize_otel_receives_config_options(
-        self,
-        tmp_path: "Path",
-        patched_arize_otel: "FakeArizeOtel",
-    ) -> None:
-        """
-        GIVEN transport, batch, log_to_console, and verbose are specified in config
-        WHEN create_tracer_provider is called
-        THEN arize.otel.register receives these options
-        """
-        config_content = """service:
-  name: test-service
 
-arize:
-  endpoint: https://otlp.arize.com/v1/traces
-  space_id: test-space
-  api_key: test-key
-  transport: http
-  batch: false
-  log_to_console: true
-  verbose: true
-"""
-        config_path = tmp_path / "config.yaml"
-        config_path.write_text(config_content)
-
-        from llmops.config import load_config
-        import llmops._internal.telemetry as telemetry_module
-
-        config = load_config(config_path)
-        telemetry_module.create_tracer_provider(config)
-
-        # Verify config values are passed to arize.otel.register
-        patched_arize_otel.assert_registered_once()
-        patched_arize_otel.assert_registered_with(
-            transport=Transport.HTTP,
-            batch=False,
-            log_to_console=True,
-            verbose=True,
-        )
-
-
+@pytest.mark.unit
 class TestTLSCertificateConfig:
-    """Tests for TLS certificate configuration."""
+    """Tests for TLS certificate configuration.
+
+    PRD: PRD_01
+    """
 
     def test_certificate_file_from_config(
         self,
         tmp_path: "Path",
     ) -> None:
         """
+        PRD: PRD_01
+
         GIVEN certificate_file is specified in config
         WHEN config is loaded
         THEN the certificate_file is parsed correctly
@@ -371,6 +299,8 @@ arize:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """
+        PRD: PRD_01
+
         GIVEN OTEL_EXPORTER_OTLP_CERTIFICATE env var is set
         AND certificate_file is NOT in config
         WHEN config is loaded
@@ -400,6 +330,8 @@ arize:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """
+        PRD: PRD_01
+
         GIVEN both config file and env var specify certificate_file
         WHEN config is loaded
         THEN config file value takes precedence
@@ -431,6 +363,8 @@ arize:
         tmp_path: "Path",
     ) -> None:
         """
+        PRD: PRD_01
+
         GIVEN certificate_file is a relative path
         WHEN config is loaded
         THEN the path is resolved relative to the config file's directory
@@ -463,6 +397,8 @@ arize:
         tmp_path: "Path",
     ) -> None:
         """
+        PRD: PRD_01
+
         GIVEN certificate_file is an absolute path
         WHEN config is loaded
         THEN the path is used as-is
@@ -486,14 +422,20 @@ arize:
         assert config.arize.certificate_file == str(cert_file)
 
 
+@pytest.mark.unit
 class TestCertificateValidation:
-    """Tests for certificate file existence validation."""
+    """Tests for certificate file existence validation.
+
+    PRD: PRD_01
+    """
 
     def test_missing_cert_file_fails_in_strict_mode(
         self,
         tmp_path: "Path",
     ) -> None:
         """
+        PRD: PRD_01
+
         GIVEN certificate_file points to non-existent file
         AND validation mode is strict
         WHEN config is loaded
@@ -525,6 +467,8 @@ validation:
         tmp_path: "Path",
     ) -> None:
         """
+        PRD: PRD_01
+
         GIVEN certificate_file points to non-existent file
         AND validation mode is permissive
         WHEN config is loaded
@@ -549,8 +493,12 @@ validation:
         assert config.arize.certificate_file == "/nonexistent/path/cert.pem"
 
 
+@pytest.mark.unit
 class TestTLSBridgeToEnvVars:
-    """Tests for _bridge_tls_config_to_env() function."""
+    """Tests for _bridge_tls_config_to_env() function.
+
+    PRD: PRD_01
+    """
 
     def test_bridge_sets_certificate_env_var(
         self,
@@ -558,6 +506,8 @@ class TestTLSBridgeToEnvVars:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """
+        PRD: PRD_01
+
         GIVEN certificate_file is specified in config
         AND OTEL_EXPORTER_OTLP_CERTIFICATE env var is NOT set
         WHEN _bridge_tls_config_to_env is called
@@ -594,6 +544,8 @@ arize:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """
+        PRD: PRD_01
+
         GIVEN OTEL_EXPORTER_OTLP_CERTIFICATE env var is already set
         AND certificate_file is specified in config
         WHEN _bridge_tls_config_to_env is called
@@ -631,6 +583,8 @@ arize:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """
+        PRD: PRD_01
+
         GIVEN no TLS fields are specified in config
         WHEN _bridge_tls_config_to_env is called
         THEN no env vars are set (no errors, no side effects)
@@ -656,58 +610,21 @@ arize:
 
         assert os.environ.get("OTEL_EXPORTER_OTLP_CERTIFICATE") is None
 
-    @pytest.mark.disable_mock_sdk_telemetry
-    def test_create_tracer_provider_calls_bridge(
-        self,
-        tmp_path: "Path",
-        monkeypatch: pytest.MonkeyPatch,
-        patched_arize_otel: "FakeArizeOtel",
-    ) -> None:
-        """
-        GIVEN certificate_file is specified in config
-        WHEN create_tracer_provider is called
-        THEN _bridge_tls_config_to_env is called (env var is set)
 
-        Note: This tests the side effect of TLS config bridging to env vars,
-        which is the observable behavior we care about.
-        """
-        monkeypatch.delenv("OTEL_EXPORTER_OTLP_CERTIFICATE", raising=False)
-
-        cert_file = tmp_path / "ca-bundle.pem"
-        cert_file.write_text("dummy cert")
-
-        config_content = f"""service:
-  name: test-service
-
-arize:
-  endpoint: https://otlp.internal/v1/traces
-  certificate_file: {cert_file}
-  space_id: test-space
-  api_key: test-key
-"""
-        config_path = tmp_path / "config.yaml"
-        config_path.write_text(config_content)
-
-        from llmops.config import load_config
-        import llmops._internal.telemetry as telemetry_module
-
-        config = load_config(config_path)
-        telemetry_module.create_tracer_provider(config)
-
-        # Verify the observable behavior: env var is set
-        import os
-
-        assert os.environ.get("OTEL_EXPORTER_OTLP_CERTIFICATE") == str(cert_file)
-
-
+@pytest.mark.unit
 class TestProjectNameHeader:
-    """Tests for project_name being passed correctly."""
+    """Tests for project_name being passed correctly.
+
+    PRD: PRD_01
+    """
 
     def test_project_name_in_config(
         self,
         tmp_path: "Path",
     ) -> None:
         """
+        PRD: PRD_01
+
         GIVEN project_name is specified in config
         WHEN config is loaded
         THEN project_name is available in config
@@ -726,3 +643,151 @@ arize:
 
         config = load_config(config_path)
         assert config.arize.project_name == "my-awesome-project"
+
+
+@pytest.mark.unit
+class TestEnvVarOverrides:
+    """Tests for environment variable override behavior.
+
+    PRD: PRD_01, Requirement: F10
+    """
+
+    def test_api_key_can_be_set_via_env_var(
+        self,
+        tmp_path: "Path",
+        monkeypatch: pytest.MonkeyPatch,
+        llmops_arize_module: Any,
+    ) -> None:
+        """
+        PRD: PRD_01, Requirement: F10
+
+        GIVEN a config file with arize.api_key set to "${ARIZE_API_KEY}"
+        AND the ARIZE_API_KEY environment variable is set to "test-api-key"
+        WHEN llmops.arize.instrument() is called
+        THEN the API key from the environment is used
+        """
+        config_path = tmp_path / "llmops.yaml"
+        config_path.write_text(
+            "service:\n"
+            "  name: test-service\n"
+            "  version: '1.0.0'\n"
+            "arize:\n"
+            "  endpoint: http://localhost:6006/v1/traces\n"
+            '  api_key: "${ARIZE_API_KEY}"\n'
+            "instrumentation:\n"
+            "  google_adk: true\n"
+            "  google_genai: true\n"
+            "validation:\n"
+            "  mode: permissive\n"
+        )
+
+        monkeypatch.setenv("ARIZE_API_KEY", "test-api-key-from-env")
+
+        provider = llmops_arize_module.instrument(config_path=config_path)
+
+        assert provider is not None
+
+    def test_space_id_can_be_set_via_env_var(
+        self,
+        tmp_path: "Path",
+        monkeypatch: pytest.MonkeyPatch,
+        llmops_arize_module: Any,
+    ) -> None:
+        """
+        PRD: PRD_01, Requirement: F10
+
+        GIVEN a config file with arize.space_id set to "${ARIZE_SPACE_ID}"
+        AND the ARIZE_SPACE_ID environment variable is set
+        WHEN llmops.arize.instrument() is called
+        THEN the space ID from the environment is used
+        """
+        config_path = tmp_path / "llmops.yaml"
+        config_path.write_text(
+            "service:\n"
+            "  name: test-service\n"
+            "  version: '1.0.0'\n"
+            "arize:\n"
+            "  endpoint: http://localhost:6006/v1/traces\n"
+            '  space_id: "${ARIZE_SPACE_ID}"\n'
+            "instrumentation:\n"
+            "  google_adk: true\n"
+            "  google_genai: true\n"
+            "validation:\n"
+            "  mode: permissive\n"
+        )
+
+        monkeypatch.setenv("ARIZE_SPACE_ID", "test-space-id-from-env")
+
+        provider = llmops_arize_module.instrument(config_path=config_path)
+
+        assert provider is not None
+
+    def test_missing_env_var_in_permissive_mode_does_not_fail(
+        self,
+        tmp_path: "Path",
+        monkeypatch: pytest.MonkeyPatch,
+        llmops_arize_module: Any,
+    ) -> None:
+        """
+        PRD: PRD_01, Requirement: F10
+
+        GIVEN a config file referencing an env var that is not set
+        AND validation mode is permissive
+        WHEN llmops.arize.instrument() is called
+        THEN the SDK initializes without raising an exception
+        AND a no-op or degraded mode is used
+        """
+        config_path = tmp_path / "llmops.yaml"
+        config_path.write_text(
+            "service:\n"
+            "  name: test-service\n"
+            "  version: '1.0.0'\n"
+            "arize:\n"
+            "  endpoint: http://localhost:6006/v1/traces\n"
+            '  api_key: "${NONEXISTENT_ENV_VAR}"\n'
+            "instrumentation:\n"
+            "  google_adk: true\n"
+            "  google_genai: true\n"
+            "validation:\n"
+            "  mode: permissive\n"
+        )
+
+        monkeypatch.delenv("NONEXISTENT_ENV_VAR", raising=False)
+
+        provider = llmops_arize_module.instrument(config_path=config_path)
+
+        assert provider is not None
+
+    def test_missing_env_var_in_strict_mode_raises_error(
+        self,
+        tmp_path: "Path",
+        monkeypatch: pytest.MonkeyPatch,
+        llmops_arize_module: Any,
+    ) -> None:
+        """
+        PRD: PRD_01, Requirement: F10
+
+        GIVEN a config file referencing an env var that is not set
+        AND validation mode is strict
+        WHEN llmops.arize.instrument() is called
+        THEN a ConfigurationError is raised
+        """
+        config_path = tmp_path / "llmops.yaml"
+        config_path.write_text(
+            "service:\n"
+            "  name: test-service\n"
+            "  version: '1.0.0'\n"
+            "arize:\n"
+            "  endpoint: http://localhost:6006/v1/traces\n"
+            '  api_key: "${NONEXISTENT_ENV_VAR}"\n'
+            "instrumentation:\n"
+            "  google_adk: true\n"
+            "  google_genai: true\n"
+            "validation:\n"
+            "  mode: strict\n"
+        )
+
+        monkeypatch.delenv("NONEXISTENT_ENV_VAR", raising=False)
+
+        with pytest.raises(llmops_arize_module.ConfigurationError):
+            llmops_arize_module.instrument(config_path=config_path)

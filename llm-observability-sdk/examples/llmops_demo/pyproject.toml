@@ -14,10 +14,7 @@ dependencies = [
     "google-genai>=1.0.0",
 
     # LLMOps SDK (local path)
-    "llmops",
-
-    # OpenInference instrumentor (required by llmops SDK)
-    "openinference-instrumentation-google-adk>=0.1.5",
+    "llmops[arize]",
 ]
 
 [build-system]
@@ -28,10 +25,7 @@ build-backend = "hatchling.build"
 packages = ["."]
 
 [tool.uv]
-dev-dependencies = [
-    "ruff>=0.8.0",
-    "mypy>=1.13.0",
-]
+dev-dependencies = ["ruff>=0.8.0", "mypy>=1.13.0"]
 
 [tool.uv.sources]
 llmops = { path = "../..", editable = true }
@@ -46,15 +40,15 @@ line-length = 100
 
 [tool.ruff.lint]
 select = [
-    "E",      # pycodestyle errors
-    "W",      # pycodestyle warnings
-    "F",      # Pyflakes
-    "I",      # isort
-    "B",      # flake8-bugbear
-    "UP",     # pyupgrade
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # Pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "UP", # pyupgrade
 ]
 ignore = [
-    "E501",   # line too long (handled by formatter)
+    "E501", # line too long (handled by formatter)
 ]
 
 [tool.ruff.format]
@@ -69,7 +63,7 @@ indent-style = "space"
 python_version = "3.13"
 warn_return_any = true
 warn_unused_ignores = true
-disallow_untyped_defs = false  # Relaxed for demo service
-ignore_missing_imports = true  # External packages may lack stubs
+disallow_untyped_defs = false    # Relaxed for demo service
+ignore_missing_imports = true    # External packages may lack stubs
 explicit_package_bases = true
 files = ["main.py", "agents.py"]

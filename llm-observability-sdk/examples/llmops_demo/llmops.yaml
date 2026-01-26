@@ -1,19 +1,67 @@
-# llmops.yaml - SDK configuration for Phoenix (local Docker backend)
-#
-# This configuration demonstrates the llmops.arize.instrument() API from API_SPEC_01.md.
-# Traces are sent to Phoenix running in Docker (see docker/docker-compose.yaml).
-
+# -----------------------------------------------------------------------------
+# Service Configuration (required)
+# -----------------------------------------------------------------------------
 service:
-  name: "llmops-demo"
-  version: "0.1.0"
+  name: llmops-demo                  # Required: identifies your service in traces
+  version: "1.0.0"                    # Optional: service version for trace metadata
 
+# -----------------------------------------------------------------------------
+# Arize Telemetry Configuration (required)
+# -----------------------------------------------------------------------------
 arize:
-  endpoint: "http://localhost:6006/v1/traces"
-  project_name: "llmops-demo"
+  # Required: OTLP endpoint for trace export
+  # For Arize cloud: https://otlp.arize.com/v1/traces
+  # For Phoenix local: http://localhost:6006/v1/traces
+  # For self-hosted Arize: https://arize-app.your-cluster.internal/v1/traces
+  endpoint: ${ARIZE_ENDPOINT}
 
+  # Optional: Arize authentication (required for Arize cloud)
+  space_id: ${ARIZE_SPACE_ID}
+  api_key: ${ARIZE_API_KEY}
+
+  # Optional: Project name for organizing traces in Arize
+  project_name: llmops-demo
+
+  # Optional: Transport protocol (default: "http")
+  # - "http": HTTP/HTTPS transport (recommended, works with most proxies/firewalls)
+  # - "grpc": gRPC transport (requires opentelemetry-exporter-otlp-proto-grpc)
+  # Maps directly to arize.otel.register(transport=Transport.HTTP)
+  transport: http
+
+  # Optional: Span batching mode (default: true)
+  # - true: BatchSpanProcessor (non-blocking, recommended for production)
+  # - false: SimpleSpanProcessor (blocking, useful for development/debugging)
+  # Maps directly to arize.otel.register(batch=)
+  batch: true
+
+  # Optional: Log spans to console (default: false)
+  # Useful during development to see what spans are being created
+  # Maps directly to arize.otel.register(log_to_console=)
+  log_to_console: false
+
+  # Optional: Print configuration details to stdout (default: false)
+  # Maps directly to arize.otel.register(verbose=)
+  verbose: false
+
+  # Optional: TLS certificate for self-hosted HTTPS endpoints
+  # Path can be relative (resolved from this config file) or absolute
+  # See "TLS Setup for Self-Hosted Arize" section below
+  # certificate_file: ./certs/arize-ca.pem
+
+# -----------------------------------------------------------------------------
+# Auto-Instrumentation Configuration (optional)
+# -----------------------------------------------------------------------------
 instrumentation:
-  google_adk: true
-  google_genai: true
+  google_adk: true      # Enable Google ADK instrumentation (default: true)
+  google_genai: true    # Enable Google GenAI instrumentation (default: true)
 
+# -----------------------------------------------------------------------------
+# Validation Configuration (optional)
+# -----------------------------------------------------------------------------
 validation:
+  # Mode options:
+  # - "strict": Raise errors for missing env vars, invalid config, missing cert files
+  # - "permissive": Log warnings and continue with defaults (default)
   mode: permissive
+
+

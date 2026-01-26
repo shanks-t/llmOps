@@ -1,8 +1,6 @@
-"""Contract tests for MLflow skeleton instrumentation — PRD_01.
+"""Integration tests for MLflow skeleton instrumentation.
 
-Executable contracts derived from:
-- PRD: docs/prd/PRD_01.md
-- API: docs/api_spec/API_SPEC_01.md
+Tests derived from PRD_01.
 
 Requirements covered:
 - F1: llmops.mlflow.instrument(config_path) exists
@@ -22,14 +20,13 @@ import pytest
 if TYPE_CHECKING:
     from pathlib import Path
 
-# Traceability metadata
-PRD_ID = "PRD_01"
-API_SPEC_ID = "API_SPEC_01"
-CAPABILITY = "mlflow_instrument"
 
-
+@pytest.mark.integration
 class TestMLflowConfigResolution:
-    """Tests for MLflow config path resolution behavior."""
+    """Tests for MLflow config path resolution behavior.
+
+    PRD: PRD_01, Requirements: F1, F6, F14
+    """
 
     def test_instrument_fails_without_config_in_strict_mode(
         self,
@@ -37,8 +34,7 @@ class TestMLflowConfigResolution:
         llmops_mlflow_module: Any,
     ) -> None:
         """
-        PRD: PRD_01
-        API: API_SPEC_01.llmops.mlflow.instrument()
+        PRD: PRD_01, Requirement: F6
 
         GIVEN the LLMOPS_CONFIG_PATH environment variable is not set
         AND no config path is provided to instrument()
@@ -57,8 +53,7 @@ class TestMLflowConfigResolution:
         llmops_mlflow_module: Any,
     ) -> None:
         """
-        PRD: PRD_01
-        API: API_SPEC_01.llmops.mlflow.instrument()
+        PRD: PRD_01, Requirement: F1
 
         GIVEN a valid config file exists
         AND the LLMOPS_CONFIG_PATH environment variable is set to that path
@@ -79,8 +74,7 @@ class TestMLflowConfigResolution:
         llmops_mlflow_module: Any,
     ) -> None:
         """
-        PRD: PRD_01
-        API: API_SPEC_01.llmops.mlflow.instrument()
+        PRD: PRD_01, Requirement: F6
 
         GIVEN a valid config file exists at "env.yaml"
         AND a valid config file exists at "arg.yaml"
@@ -111,8 +105,12 @@ class TestMLflowConfigResolution:
         )
 
 
+@pytest.mark.integration
 class TestMLflowFileExtensions:
-    """Tests for config file extension handling."""
+    """Tests for config file extension handling.
+
+    PRD: PRD_01, Requirement: F7
+    """
 
     def test_instrument_accepts_yaml_extension(
         self,
@@ -121,8 +119,7 @@ class TestMLflowFileExtensions:
         llmops_mlflow_module: Any,
     ) -> None:
         """
-        PRD: PRD_01
-        API: API_SPEC_01.llmops.mlflow.instrument()
+        PRD: PRD_01, Requirement: F7
 
         GIVEN a valid config file exists with .yaml extension
         WHEN llmops.mlflow.instrument() is called with that config path
@@ -142,8 +139,7 @@ class TestMLflowFileExtensions:
         llmops_mlflow_module: Any,
     ) -> None:
         """
-        PRD: PRD_01
-        API: API_SPEC_01.llmops.mlflow.instrument()
+        PRD: PRD_01, Requirement: F7
 
         GIVEN a valid config file exists with .yml extension
         WHEN llmops.mlflow.instrument() is called with that config path
@@ -157,11 +153,14 @@ class TestMLflowFileExtensions:
         assert provider is not None
 
 
+@pytest.mark.integration
 class TestMLflowSkeletonBehavior:
     """Tests for skeleton behavior (no-op provider).
 
     MLflow is a skeleton implementation and should return a no-op provider
     even when the config is valid.
+
+    PRD: PRD_01, Requirement: F14
     """
 
     def test_skeleton_returns_noop_provider_on_valid_config(
@@ -170,8 +169,7 @@ class TestMLflowSkeletonBehavior:
         llmops_mlflow_module: Any,
     ) -> None:
         """
-        PRD: PRD_01
-        API: API_SPEC_01.llmops.mlflow.instrument()
+        PRD: PRD_01, Requirement: F14
 
         GIVEN a valid MLflow config file
         WHEN llmops.mlflow.instrument() is called
@@ -182,8 +180,12 @@ class TestMLflowSkeletonBehavior:
         assert provider is not None
 
 
+@pytest.mark.integration
 class TestMLflowValidation:
-    """Tests for strict vs permissive validation behavior."""
+    """Tests for strict vs permissive validation behavior.
+
+    PRD: PRD_01, Requirements: N5, N6
+    """
 
     def test_permissive_mode_returns_noop_on_invalid_config(
         self,
@@ -191,8 +193,7 @@ class TestMLflowValidation:
         llmops_mlflow_module: Any,
     ) -> None:
         """
-        PRD: PRD_01
-        API: API_SPEC_01.llmops.mlflow.instrument()
+        PRD: PRD_01, Requirement: N5
 
         GIVEN a config file with validation mode set to "permissive"
         AND the config file is missing required fields
@@ -217,8 +218,7 @@ class TestMLflowValidation:
         llmops_mlflow_module: Any,
     ) -> None:
         """
-        PRD: PRD_01
-        API: API_SPEC_01.llmops.mlflow.instrument()
+        PRD: PRD_01, Requirement: N6
 
         GIVEN a config file with validation mode set to "strict"
         AND the config file is missing required fields

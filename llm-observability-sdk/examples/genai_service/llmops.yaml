@@ -1,0 +1,36 @@
+# llmops.yaml - Configuration for llmops SDK
+#
+# This config file is used by instrument_existing_tracer() to add Arize AX
+# as an additional telemetry destination to an existing TracerProvider.
+#
+# Environment variables are substituted using ${VAR_NAME} syntax.
+# Keep secrets in .env file, not here.
+
+service:
+  name: fastapi-genai-service
+  version: "1.0.0"
+
+arize:
+  # Arize AX OTLP HTTP endpoint
+  endpoint: "${ARIZE_ENDPOINT}"
+  
+  # Authentication (from environment variables)
+  api_key: "${ARIZE_API_KEY}"
+  space_id: "${ARIZE_SPACE_ID}"
+  
+  # Project name in Arize AX dashboard
+  project_name: "genai-service"
+  
+  # Only send GenAI spans to Arize (default for instrument_existing_tracer)
+  # Infrastructure spans (HTTP, DB, etc.) stay in Jaeger only
+  filter_to_genai_spans: false
+
+instrumentation:
+  # Auto-instrument Google ADK for GenAI semantic spans
+  google_adk: true
+  google_genai: true
+
+validation:
+  # permissive: log warnings but continue
+  # strict: raise errors on invalid config
+  mode: permissive

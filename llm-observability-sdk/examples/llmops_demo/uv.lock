@@ -60,6 +60,22 @@ wheels = [
 ]
 
 [[package]]
+name = "arize-otel"
+version = "0.11.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "openinference-instrumentation" },
+    { name = "openinference-semantic-conventions" },
+    { name = "opentelemetry-exporter-otlp" },
+    { name = "opentelemetry-proto" },
+    { name = "opentelemetry-sdk" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/0a/43/feecfd74cf03cd9f73bfa43155d8edb4ee38e880e7cd6ecc4277f2f4143c/arize_otel-0.11.0.tar.gz", hash = "sha256:cf0729b7c236c51c11e7054b3f96e7deadf6a813386a35391a670c64a63a09bf", size = 15801 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/55/8b/8f5426c47eee5e4f3acaf8a8037dbe5a8d503c739e9327be8d699e6631a5/arize_otel-0.11.0-py3-none-any.whl", hash = "sha256:48e7e4c5b30d53a89c86085bd00a98077bad766ccde79ca906daa78eb17b93d2", size = 16839 },
+]
+
+[[package]]
 name = "attrs"
 version = "25.4.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1098,32 +1114,36 @@ version = "0.1.0"
 source = { editable = "../../" }
 dependencies = [
     { name = "opentelemetry-api" },
-    { name = "opentelemetry-exporter-otlp-proto-http" },
     { name = "opentelemetry-sdk" },
-    { name = "python-dotenv" },
     { name = "pyyaml" },
+]
+
+[package.optional-dependencies]
+arize = [
+    { name = "arize-otel" },
+    { name = "openinference-instrumentation-google-adk" },
+    { name = "openinference-instrumentation-google-genai" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "arize-otel", marker = "extra == 'arize'", specifier = ">=0.7.0" },
     { name = "fastapi", marker = "extra == 'test'", specifier = ">=0.115.0" },
     { name = "google-adk", marker = "extra == 'test'", specifier = ">=1.21.0" },
     { name = "google-genai", marker = "extra == 'test'", specifier = ">=1.50.0" },
     { name = "httpx", marker = "extra == 'test'", specifier = ">=0.27.0" },
-    { name = "llmops", extras = ["phoenix", "mlflow", "test"], marker = "extra == 'all'" },
-    { name = "mlflow", marker = "extra == 'mlflow'", specifier = ">=3.6.0" },
-    { name = "openinference-instrumentation-google-adk", marker = "extra == 'phoenix'", specifier = ">=0.1.5" },
-    { name = "openinference-instrumentation-google-genai", marker = "extra == 'phoenix'", specifier = ">=0.1.9" },
+    { name = "llmops", extras = ["arize", "mlflow", "test"], marker = "extra == 'all'" },
+    { name = "mlflow", marker = "extra == 'mlflow'", specifier = ">=2.10.0" },
+    { name = "openinference-instrumentation-google-adk", marker = "extra == 'arize'", specifier = ">=0.1.5" },
+    { name = "openinference-instrumentation-google-genai", marker = "extra == 'arize'", specifier = ">=0.1.9" },
     { name = "opentelemetry-api", specifier = ">=1.30.0" },
-    { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.30.0" },
     { name = "opentelemetry-sdk", specifier = ">=1.30.0" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
     { name = "pytest-mock", marker = "extra == 'test'", specifier = ">=3.14.0" },
-    { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "pyyaml", specifier = ">=6.0.0" },
     { name = "uvicorn", marker = "extra == 'test'", specifier = ">=0.34.0" },
 ]
-provides-extras = ["phoenix", "mlflow", "test", "all"]
+provides-extras = ["arize", "mlflow", "test", "all"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1141,8 +1161,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "google-adk" },
     { name = "google-genai" },
-    { name = "llmops" },
-    { name = "openinference-instrumentation-google-adk" },
+    { name = "llmops", extra = ["arize"] },
     { name = "python-dotenv" },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -1158,8 +1177,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "google-adk", specifier = ">=1.2.0" },
     { name = "google-genai", specifier = ">=1.0.0" },
-    { name = "llmops", editable = "../../" },
-    { name = "openinference-instrumentation-google-adk", specifier = ">=0.1.5" },
+    { name = "llmops", extras = ["arize"], editable = "../../" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32.0" },
 ]
@@ -1393,6 +1411,23 @@ wheels = [
 ]
 
 [[package]]
+name = "openinference-instrumentation-google-genai"
+version = "0.1.9"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "openinference-instrumentation" },
+    { name = "openinference-semantic-conventions" },
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-instrumentation" },
+    { name = "opentelemetry-semantic-conventions" },
+    { name = "wrapt" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/20/3e/53388066d7bab1e88943705475466cd63d0a9f4dec12db27871031bd1cf1/openinference_instrumentation_google_genai-0.1.9.tar.gz", hash = "sha256:df23eb936f7854aed2e4fe240e2b01012a5d3328266e6fa7670e20fdcec20cac", size = 33877 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6a/fe/476c9bf519dd1390a8980ac389a5afbb224f975d4d63861aad17070dad4b/openinference_instrumentation_google_genai-0.1.9-py3-none-any.whl", hash = "sha256:84bdacdad1b72da17331d118359741667a3279cf043e63085fb63f111b7c2f3f", size = 23419 },
+]
+
+[[package]]
 name = "openinference-semantic-conventions"
 version = "0.1.25"
 source = { registry = "https://pypi.org/simple" }
@@ -1460,6 +1495,19 @@ wheels = [
 ]
 
 [[package]]
+name = "opentelemetry-exporter-otlp"
+version = "1.37.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "opentelemetry-exporter-otlp-proto-grpc" },
+    { name = "opentelemetry-exporter-otlp-proto-http" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/64/df/47fde1de15a3d5ad410e98710fac60cd3d509df5dc7ec1359b71d6bf7e70/opentelemetry_exporter_otlp-1.37.0.tar.gz", hash = "sha256:f85b1929dd0d750751cc9159376fb05aa88bb7a08b6cdbf84edb0054d93e9f26", size = 6145 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f5/23/7e35e41111e3834d918e414eca41555d585e8860c9149507298bb3b9b061/opentelemetry_exporter_otlp-1.37.0-py3-none-any.whl", hash = "sha256:bd44592c6bc7fc3e5c0a9b60f2ee813c84c2800c449e59504ab93f356cc450fc", size = 7019 },
+]
+
+[[package]]
 name = "opentelemetry-exporter-otlp-proto-common"
 version = "1.37.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1469,6 +1517,24 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/dc/6c/10018cbcc1e6fff23aac67d7fd977c3d692dbe5f9ef9bb4db5c1268726cc/opentelemetry_exporter_otlp_proto_common-1.37.0.tar.gz", hash = "sha256:c87a1bdd9f41fdc408d9cc9367bb53f8d2602829659f2b90be9f9d79d0bfe62c", size = 20430 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/08/13/b4ef09837409a777f3c0af2a5b4ba9b7af34872bc43609dda0c209e4060d/opentelemetry_exporter_otlp_proto_common-1.37.0-py3-none-any.whl", hash = "sha256:53038428449c559b0c564b8d718df3314da387109c4d36bd1b94c9a641b0292e", size = 18359 },
+]
+
+[[package]]
+name = "opentelemetry-exporter-otlp-proto-grpc"
+version = "1.37.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "googleapis-common-protos" },
+    { name = "grpcio" },
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-exporter-otlp-proto-common" },
+    { name = "opentelemetry-proto" },
+    { name = "opentelemetry-sdk" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d1/11/4ad0979d0bb13ae5a845214e97c8d42da43980034c30d6f72d8e0ebe580e/opentelemetry_exporter_otlp_proto_grpc-1.37.0.tar.gz", hash = "sha256:f55bcb9fc848ce05ad3dd954058bc7b126624d22c4d9e958da24d8537763bec5", size = 24465 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/39/17/46630b74751031a658706bef23ac99cdc2953cd3b2d28ec90590a0766b3e/opentelemetry_exporter_otlp_proto_grpc-1.37.0-py3-none-any.whl", hash = "sha256:aee5104835bf7993b7ddaaf380b6467472abaedb1f1dbfcc54a52a7d781a3890", size = 19305 },
 ]
 
 [[package]]

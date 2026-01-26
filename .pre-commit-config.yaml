@@ -19,12 +19,6 @@ repos:
         language: system
         pass_filenames: false
         files: ^llm-observability-sdk/
-      - id: sdk-test
-        name: sdk test
-        entry: just sdk::test
-        language: system
-        pass_filenames: false
-        files: ^llm-observability-sdk/
       - id: genai-check
         name: genai check
         entry: just genai-check

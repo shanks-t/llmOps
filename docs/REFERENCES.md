@@ -40,7 +40,7 @@ A curated collection of documentation links for libraries, semantic conventions,
 - [Prompt Learning Tutorial](https://docs.arize.com/phoenix/prompt-engineering/tutorial/optimize-prompts-automatically) - Auto-optimization
 
 ### OTEL Integration
-- [arize-phoenix-otel PyPI](https://pypi.org/project/arize-phoenix-otel/) - Phoenix OpenTelemetry package
+- [arize-phoenix-otel source](https://pypi.org/project/arize-phoenix-otel/) - Phoenix OpenTelemetry package
 - [Phoenix OTEL Reference Documentation](https://arize-phoenix.readthedocs.io/projects/otel/en/latest/) - OTEL integration docs
 - [Phoenix register() Source Code](https://github.com/Arize-ai/phoenix/blob/main/packages/phoenix-otel/src/phoenix/otel/otel.py) - Implementation reference
 
