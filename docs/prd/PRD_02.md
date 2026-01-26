@@ -52,7 +52,7 @@ llmops.arize.instrument_existing_tracer(
 ### Non-Target Persona
 
 - **Greenfield developers** — Use `llmops.arize.instrument()` from PRD_01
-- **Users wanting full trace duplication** — This feature filters to GenAI spans by default
+- **Users wanting full trace duplication** — Set `filter_to_genai_spans=False` to preserve trace context
 
 ---
 
@@ -62,6 +62,19 @@ llmops.arize.instrument_existing_tracer(
 2. **Selective Export** — Only GenAI spans go to Arize by default
 3. **Minimal Configuration** — Works with just credentials; no config file required
 4. **Idempotent** — Calling twice doesn't add duplicate processors
+
+### 4.1 Filtering Trade-offs
+
+When `filter_to_genai_spans=True` (default), only GenAI spans are sent to Arize. This creates a trade-off:
+
+| Setting | Trace Context | Data Volume | Arize UI |
+|---------|---------------|-------------|----------|
+| `filter_to_genai_spans=True` | Lost (orphaned spans) | Lower | Spans tab only |
+| `filter_to_genai_spans=False` | Preserved | Higher | Full Traces tab |
+
+**Orphaned Spans:** When parent spans (HTTP requests, middleware, etc.) are filtered out, GenAI spans lose their parent reference and appear as standalone spans in Arize's "Spans" tab rather than as connected traces in the "Traces" tab.
+
+**Query-Time Filtering:** To preserve trace context while focusing on GenAI data, set `filter_to_genai_spans=False` and filter in the Arize UI using `openinference.span.kind EXISTS`.
 
 ---
 

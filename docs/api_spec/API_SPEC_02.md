@@ -184,6 +184,60 @@ llmops.arize.instrument_existing_tracer(
 
 **Rationale:** Users of `instrument_existing_tracer()` typically have existing infrastructure telemetry and only want GenAI-specific spans in Arize.
 
+### 4.4 Trace Context and Orphaned Spans
+
+**Important:** Filtering affects trace context preservation.
+
+**When `filter_to_genai_spans=True`:**
+- Parent spans (HTTP requests, middleware, etc.) are NOT sent to Arize
+- GenAI spans lose their parent reference and become **orphaned spans**
+- Orphaned spans appear in Arize's **Spans tab** but NOT in the **Traces tab**
+- Spans are not visually connected in the trace waterfall view
+
+**When `filter_to_genai_spans=False`:**
+- ALL spans are sent to Arize (HTTP, DB, GenAI, etc.)
+- Full trace context is preserved
+- Traces appear correctly in Arize's **Traces tab** with parent-child relationships
+- Higher data volume may impact Arize costs/quotas
+
+### 4.5 Query-Time Filtering
+
+To preserve trace context while focusing on GenAI spans, disable export-time filtering and filter in the Arize UI:
+
+```python
+# Send all spans to preserve trace context
+llmops.arize.instrument_existing_tracer(
+    config_path="llmops.yaml",
+    filter_to_genai_spans=False,
+)
+```
+
+Then in Arize UI, filter spans using:
+```
+openinference.span.kind EXISTS
+```
+
+Valid `openinference.span.kind` values (from OpenInference specification):
+
+| Value | Description |
+|-------|-------------|
+| `LLM` | LLM inference calls |
+| `CHAIN` | Chain/pipeline of operations |
+| `AGENT` | Autonomous agent |
+| `TOOL` | Tool execution |
+| `EMBEDDING` | Embedding generation |
+| `RETRIEVER` | Document retrieval |
+| `RERANKER` | Re-ranking results |
+| `GUARDRAIL` | Safety/guardrail checks |
+
+### 4.6 Choosing a Filtering Strategy
+
+| Priority | Recommended Setting | Rationale |
+|----------|---------------------|-----------|
+| Minimize Arize data volume | `filter_to_genai_spans=True` | Only GenAI spans exported; spans are orphaned |
+| Preserve trace context | `filter_to_genai_spans=False` | Full traces visible; filter in Arize UI |
+| Debug GenAI in request context | `filter_to_genai_spans=False` | See HTTP → GenAI call flow |
+
 ---
 
 ## 5. Duplicate Call Prevention
