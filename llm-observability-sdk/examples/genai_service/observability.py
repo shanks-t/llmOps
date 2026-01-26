@@ -66,6 +66,11 @@ def setup_opentelemetry(app: FastAPI | None = None) -> TracerProvider:
 
     Returns:
         TracerProvider instance for lifecycle management (shutdown)
+
+    Note:
+        When app is provided, this function MUST be called at module level
+        (after app creation but before uvicorn starts) to ensure the FastAPI
+        middleware stack is properly instrumented.
     """
     # ------------------------------------
     # Configuration from environment
