@@ -26,6 +26,7 @@ Environment Variables:
 from __future__ import annotations
 
 import os
+from typing import TYPE_CHECKING
 
 from opentelemetry import trace
 from opentelemetry.sdk.resources import Resource
@@ -36,6 +37,9 @@ from opentelemetry.sdk.trace.export import (
     SimpleSpanProcessor,
 )
 
+if TYPE_CHECKING:
+    from fastapi import FastAPI
+
 
 def _get_bool_env(name: str, default: bool = False) -> bool:
     """Get boolean value from environment variable."""
@@ -43,18 +47,30 @@ def _get_bool_env(name: str, default: bool = False) -> bool:
     return value in ("true", "1", "yes")
 
 
-def setup_opentelemetry() -> TracerProvider:
+def setup_opentelemetry(app: FastAPI | None = None) -> TracerProvider:
     """
     Set up OpenTelemetry with a single global TracerProvider.
 
     Configures:
     - Console exporter for debugging (if OTEL_CONSOLE_DEBUG=true)
     - OTLP exporter for infrastructure traces to Jaeger (if OTEL_ENABLED=true)
+    - FastAPI auto-instrumentation for HTTP spans (if app provided)
     - Phoenix/Arize AX exporter for GenAI traces only (based on ARIZE_MODE)
     - Google ADK instrumentation for GenAI semantic spans
 
+    Args:
+        app: Optional FastAPI application instance. If provided, FastAPI
+             auto-instrumentation will be applied using the same TracerProvider.
+             This creates HTTP spans (GET /health, POST /chat, etc.) that will
+             appear in Jaeger but be filtered from Arize (no openinference.span.kind).
+
     Returns:
         TracerProvider instance for lifecycle management (shutdown)
+
+    Note:
+        When app is provided, this function MUST be called at module level
+        (after app creation but before uvicorn starts) to ensure the FastAPI
+        middleware stack is properly instrumented.
     """
     # ------------------------------------
     # Configuration from environment
@@ -104,6 +120,19 @@ def setup_opentelemetry() -> TracerProvider:
         otlp_processor = BatchSpanProcessor(otlp_exporter)
         tracer_provider.add_span_processor(otlp_processor)
         print(f"[observability] OTLP exporter enabled → {otel_endpoint}")
+
+    # ------------------------------------
+    # FastAPI auto-instrumentation
+    # (Creates HTTP spans for all routes)
+    # ------------------------------------
+    # These spans do NOT have openinference.span.kind attribute, so they will
+    # be filtered out by OpenInferenceSpanFilter when sending to Arize.
+    # They will still appear in Jaeger (all spans go there).
+    if app is not None:
+        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
+        FastAPIInstrumentor.instrument_app(app, tracer_provider=tracer_provider)
+        print("[observability] FastAPI auto-instrumentation enabled")
 
     # ------------------------------------
     # Phoenix / Arize AX exporter
