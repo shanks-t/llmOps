@@ -348,14 +348,12 @@ name = "genai-service"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "arize-otel" },
     { name = "fastapi" },
     { name = "fhir-resources" },
     { name = "google-adk" },
     { name = "google-cloud-storage" },
     { name = "google-genai" },
-    { name = "llmops" },
-    { name = "openinference-instrumentation-google-adk" },
+    { name = "llmops", extra = ["arize"] },
     { name = "opentelemetry-api" },
     { name = "opentelemetry-exporter-otlp-proto-http" },
     { name = "opentelemetry-instrumentation-fastapi" },
@@ -372,14 +370,12 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "arize-otel", specifier = ">=0.6.0" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "fhir-resources", specifier = ">=7.1.0" },
     { name = "google-adk", specifier = ">=1.2.0" },
     { name = "google-cloud-storage", specifier = ">=2.14.0" },
     { name = "google-genai", specifier = ">=1.0.0" },
-    { name = "llmops", editable = "../../" },
-    { name = "openinference-instrumentation-google-adk", specifier = ">=0.1.5" },
+    { name = "llmops", extras = ["arize"], editable = "../../" },
     { name = "opentelemetry-api", specifier = ">=1.28.0" },
     { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.28.0" },
     { name = "opentelemetry-instrumentation-fastapi", specifier = ">=0.48b0" },
@@ -1184,6 +1180,13 @@ dependencies = [
     { name = "pyyaml" },
 ]
 
+[package.optional-dependencies]
+arize = [
+    { name = "arize-otel" },
+    { name = "openinference-instrumentation-google-adk" },
+    { name = "openinference-instrumentation-google-genai" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "arize-otel", marker = "extra == 'arize'", specifier = ">=0.7.0" },
@@ -1432,6 +1435,23 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/5d/bd/3958ddd56b4da78006a0deb264d2bc3a437149ff80e9c9ed44c32c58d732/openinference_instrumentation_google_adk-0.1.8.tar.gz", hash = "sha256:b522b296aa8491ed83e9af7bde5f227e455604330398c878cbc4e2ae2943b2ae", size = 11933 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/60/80/0a17f68779a493a2afbc625d7a45c356b2a269a7f7fb5f7124c34bf3b256/openinference_instrumentation_google_adk-0.1.8-py3-none-any.whl", hash = "sha256:4155b814e104b369cb942ff3f8c67def0846072ef9603851fb610e825620bf5f", size = 13736 },
+]
+
+[[package]]
+name = "openinference-instrumentation-google-genai"
+version = "0.1.9"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "openinference-instrumentation" },
+    { name = "openinference-semantic-conventions" },
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-instrumentation" },
+    { name = "opentelemetry-semantic-conventions" },
+    { name = "wrapt" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/20/3e/53388066d7bab1e88943705475466cd63d0a9f4dec12db27871031bd1cf1/openinference_instrumentation_google_genai-0.1.9.tar.gz", hash = "sha256:df23eb936f7854aed2e4fe240e2b01012a5d3328266e6fa7670e20fdcec20cac", size = 33877 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6a/fe/476c9bf519dd1390a8980ac389a5afbb224f975d4d63861aad17070dad4b/openinference_instrumentation_google_genai-0.1.9-py3-none-any.whl", hash = "sha256:84bdacdad1b72da17331d118359741667a3279cf043e63085fb63f111b7c2f3f", size = 23419 },
 ]
 
 [[package]]

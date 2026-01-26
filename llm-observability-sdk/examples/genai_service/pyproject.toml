@@ -23,13 +23,13 @@ dependencies = [
     "opentelemetry-instrumentation-fastapi>=0.48b0",
 
     # OpenInference for GenAI tracing
-    "openinference-instrumentation-google-adk>=0.1.5",
+    # "openinference-instrumentation-google-adk>=0.1.5",
 
     # Arize for GenAI trace export
-    "arize-otel>=0.6.0",
+    # "arize-otel>=0.6.0",
 
     # llmops SDK for instrument_existing_tracer()
-    "llmops",
+    "llmops[arize]",
 
     # GCS integration for patient records
     "google-cloud-storage>=2.14.0",
