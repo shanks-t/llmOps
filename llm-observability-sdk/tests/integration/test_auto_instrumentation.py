@@ -1,8 +1,6 @@
-"""Contract tests for Arize auto-instrumentation — PRD_01.
+"""Integration tests for auto-instrumentation.
 
-Executable contracts derived from:
-- PRD: docs/prd/PRD_01.md
-- API: docs/api_spec/API_SPEC_01.md
+Tests derived from PRD_01.
 
 Requirements covered:
 - F3: llmops.arize.instrument() auto-instruments Google ADK
@@ -14,17 +12,18 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+import pytest
+
 if TYPE_CHECKING:
     from pathlib import Path
 
-# Traceability metadata
-PRD_ID = "PRD_01"
-API_SPEC_ID = "API_SPEC_01"
-CAPABILITY = "arize_auto_instrumentation"
 
-
+@pytest.mark.integration
 class TestGoogleADKInstrumentation:
-    """Tests for Google ADK auto-instrumentation."""
+    """Tests for Google ADK auto-instrumentation.
+
+    PRD: PRD_01, Requirement: F3
+    """
 
     def test_instrument_enables_google_adk_instrumentation(
         self,
@@ -32,8 +31,7 @@ class TestGoogleADKInstrumentation:
         llmops_arize_module: Any,
     ) -> None:
         """
-        PRD: PRD_01
-        API: API_SPEC_01.llmops.arize.instrument()
+        PRD: PRD_01, Requirement: F3
 
         GIVEN a valid config file with google_adk instrumentation enabled
         WHEN llmops.arize.instrument() is called
@@ -50,8 +48,7 @@ class TestGoogleADKInstrumentation:
         llmops_arize_module: Any,
     ) -> None:
         """
-        PRD: PRD_01
-        API: API_SPEC_01.llmops.arize.instrument()
+        PRD: PRD_01, Requirement: F3, F8
 
         GIVEN a config file with google_adk instrumentation set to false
         WHEN llmops.arize.instrument() is called
@@ -76,8 +73,12 @@ class TestGoogleADKInstrumentation:
         assert provider is not None
 
 
+@pytest.mark.integration
 class TestGoogleGenAIInstrumentation:
-    """Tests for Google GenAI auto-instrumentation."""
+    """Tests for Google GenAI auto-instrumentation.
+
+    PRD: PRD_01, Requirement: F4
+    """
 
     def test_instrument_enables_google_genai_instrumentation(
         self,
@@ -85,8 +86,7 @@ class TestGoogleGenAIInstrumentation:
         llmops_arize_module: Any,
     ) -> None:
         """
-        PRD: PRD_01
-        API: API_SPEC_01.llmops.arize.instrument()
+        PRD: PRD_01, Requirement: F4
 
         GIVEN a valid config file with google_genai instrumentation enabled
         WHEN llmops.arize.instrument() is called
@@ -103,8 +103,7 @@ class TestGoogleGenAIInstrumentation:
         llmops_arize_module: Any,
     ) -> None:
         """
-        PRD: PRD_01
-        API: API_SPEC_01.llmops.arize.instrument()
+        PRD: PRD_01, Requirement: F4, F8
 
         GIVEN a config file with google_genai instrumentation set to false
         WHEN llmops.arize.instrument() is called
@@ -129,8 +128,12 @@ class TestGoogleGenAIInstrumentation:
         assert provider is not None
 
 
+@pytest.mark.integration
 class TestInstrumentationExtensibility:
-    """Tests for instrumentation extensibility."""
+    """Tests for instrumentation extensibility.
+
+    PRD: PRD_01, Requirement: F8
+    """
 
     def test_instrument_handles_unknown_instrumentor_gracefully(
         self,
@@ -138,8 +141,7 @@ class TestInstrumentationExtensibility:
         llmops_arize_module: Any,
     ) -> None:
         """
-        PRD: PRD_01
-        API: API_SPEC_01.llmops.arize.instrument()
+        PRD: PRD_01, Requirement: F8
 
         GIVEN a config file with an unknown instrumentor specified
         WHEN llmops.arize.instrument() is called in permissive mode

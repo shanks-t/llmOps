@@ -11,22 +11,24 @@ keywords = [
     "observability",
     "tracing",
     "opentelemetry",
-    "phoenix",
+    "arize",
     "mlflow",
 ]
 
 dependencies = [
-    "arize-otel>=0.7.0",
     "opentelemetry-api>=1.30.0",
     "opentelemetry-sdk>=1.30.0",
-    "python-dotenv>=1.0.0",
     "pyyaml>=6.0.0",
 ]
 
 [project.optional-dependencies]
-phoenix = [
+arize = [
+    "arize-otel>=0.7.0",
     "openinference-instrumentation-google-adk>=0.1.5",
     "openinference-instrumentation-google-genai>=0.1.9",
+]
+mlflow = [
+    "mlflow>=2.10.0",
 ]
 
 test = [
@@ -38,7 +40,7 @@ test = [
     "pytest-mock>=3.14.0",
     "httpx>=0.27.0",
 ]
-all = ["llmops[phoenix,test]"]
+all = ["llmops[arize,mlflow,test]"]
 
 [build-system]
 requires = ["hatchling"]
@@ -50,8 +52,10 @@ packages = ["src/llmops"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
-    "e2e: end-to-end tests requiring Docker services (Phoenix/MLflow)",
-    "disable_mock_sdk_telemetry: disable the autouse mock_sdk_telemetry fixture for tests that verify real arize.otel interactions",
+    "unit: Fast isolated tests (no external deps)",
+    "integration: Tests against real libraries (FakeArizeOtel, real TracerProvider)",
+    "e2e: End-to-end tests requiring Docker services (Phoenix/MLflow)",
+    "disable_mock_sdk_telemetry: Disable the autouse mock_sdk_telemetry fixture for tests that verify real arize.otel interactions",
 ]
 addopts = "-m 'not e2e'"
 

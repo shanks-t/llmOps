@@ -340,5 +340,13 @@ The following design decisions were made during architecture analysis:
 
 ---
 
+## 14. Related PRDs
+
+| PRD | Relationship |
+|-----|--------------|
+| PRD_02 | Add-on pattern for existing OpenTelemetry users. Uses `filter_to_genai_spans=True` by default, while `instrument()` uses `False`. |
+
+---
+
 **Document Owner:** Platform Team
-**Last Updated:** 2026-01-22
+**Last Updated:** 2026-01-24

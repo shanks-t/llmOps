@@ -21,11 +21,15 @@ import logging
 import os
 import re
 from contextlib import asynccontextmanager
+from typing import TYPE_CHECKING
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+
+if TYPE_CHECKING:
+    from opentelemetry.sdk.trace import TracerProvider
 
 load_dotenv()
 
@@ -169,13 +173,18 @@ def parse_agent_summary_response(response: str) -> tuple[str, list[dict]]:
 # APP & LIFESPAN
 # =============================================================================
 
+# Module-level variable to store tracer provider for shutdown
+_tracer_provider: TracerProvider | None = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Initialize OpenTelemetry on startup, flush traces on shutdown."""
-    tracer_provider = setup_opentelemetry()
+    """Handle application shutdown - setup happens at module level."""
+    # Setup already done at module level (see below)
     yield
-    shutdown_opentelemetry(tracer_provider)
+    # Shutdown and flush traces
+    if _tracer_provider is not None:
+        shutdown_opentelemetry(_tracer_provider)
 
 
 app = FastAPI(
@@ -184,6 +193,20 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+# =============================================================================
+# OpenTelemetry Setup - MUST be at module level, after app creation
+# =============================================================================
+# This sets up ALL instrumentation with the same TracerProvider:
+# - FastAPI HTTP spans (filtered from Arize, sent to Jaeger)
+# - Google ADK GenAI spans (sent to both Arize and Jaeger)
+#
+# Why at module level?
+# - FastAPIInstrumentor.instrument_app() replaces build_middleware_stack()
+# - Starlette calls build_middleware_stack() on the FIRST ASGI call (lifespan scope)
+# - By the time lifespan code runs, middleware stack is already built and cached
+# - So we must instrument at module level, before uvicorn starts
+_tracer_provider = setup_opentelemetry(app)
 
 
 # =============================================================================

@@ -18,11 +18,18 @@ dependencies = [
     "opentelemetry-sdk>=1.28.0",
     "opentelemetry-exporter-otlp-proto-http>=1.28.0",
 
+    # FastAPI auto-instrumentation for HTTP request spans
+    # (Used to verify OpenInferenceSpanFilter - HTTP spans should NOT go to Arize)
+    "opentelemetry-instrumentation-fastapi>=0.48b0",
+
     # OpenInference for GenAI tracing
     "openinference-instrumentation-google-adk>=0.1.5",
 
     # Arize for GenAI trace export
     "arize-otel>=0.6.0",
+
+    # llmops SDK for instrument_existing_tracer()
+    "llmops",
 
     # GCS integration for patient records
     "google-cloud-storage>=2.14.0",
@@ -43,6 +50,9 @@ dev-dependencies = [
     "ruff>=0.8.0",
     "mypy>=1.13.0",
 ]
+
+[tool.uv.sources]
+llmops = { path = "../..", editable = true }
 
 # =============================================================================
 # Ruff Configuration

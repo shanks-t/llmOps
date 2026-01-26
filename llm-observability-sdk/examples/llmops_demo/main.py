@@ -56,15 +56,15 @@ async def lifespan(app: FastAPI):
     config_path = Path(__file__).parent / "llmops.yaml"
 
     # Initialize telemetry using the llmops SDK
-    tracer_provider = llmops.arize.instrument(config_path=config_path)
+    llmops.arize.instrument(config_path=config_path)
 
     print(f"[llmops_demo] Telemetry initialized with config: {config_path}")
 
     yield
 
     # Shutdown and flush traces
-    tracer_provider.shutdown()
-    print("[llmops_demo] Telemetry shutdown complete")
+    # tracer_provider.shutdown()
+    # print("[llmops_demo] Telemetry shutdown complete")
 
 
 app = FastAPI(

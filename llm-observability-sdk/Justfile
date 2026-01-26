@@ -53,17 +53,17 @@ lint-fix:
 # Testing
 # =============================================================================
 
-# Run all tests (unit + fast integration, excludes E2E by default via pyproject.toml)
+# Run all tests (unit + integration, excludes E2E by default via pyproject.toml)
 [group('test')]
 test:
-    uv run pytest
+    uv run pytest tests/unit/ tests/integration/ -m "not e2e"
 
-# Run contract tests (PRD-scoped behavioral tests)
+# Run unit tests only (fast feedback loop)
 [group('test')]
 test-unit:
-    uv run pytest tests/prd_01/ -v
+    uv run pytest tests/unit/ -v
 
-# Run fast integration tests (no Docker required)
+# Run integration tests only (no Docker required)
 [group('test')]
 test-integration:
     uv run pytest tests/integration/ -v -m "not e2e"
@@ -71,7 +71,7 @@ test-integration:
 # Run E2E tests (requires Docker services)
 [group('test')]
 test-e2e:
-    uv run pytest tests/integration/ -v -m e2e
+    uv run pytest -m e2e -v
 
 # Run all tests including E2E (requires Docker services)
 [group('test')]

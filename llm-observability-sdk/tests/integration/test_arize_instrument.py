@@ -1,8 +1,6 @@
-"""Contract tests for Arize SDK instrumentation — PRD_01.
+"""Integration tests for Arize SDK instrumentation.
 
-Executable contracts derived from:
-- PRD: docs/prd/PRD_01.md
-- API: docs/api_spec/API_SPEC_01.md
+Tests derived from PRD_01.
 
 Requirements covered:
 - F1: llmops.arize.instrument(config_path) exists
@@ -22,14 +20,13 @@ import pytest
 if TYPE_CHECKING:
     from pathlib import Path
 
-# Traceability metadata
-PRD_ID = "PRD_01"
-API_SPEC_ID = "API_SPEC_01"
-CAPABILITY = "arize_instrument"
 
-
+@pytest.mark.integration
 class TestArizeConfigResolution:
-    """Tests for Arize config path resolution behavior."""
+    """Tests for Arize config path resolution behavior.
+
+    PRD: PRD_01, Requirements: F1, F6
+    """
 
     def test_instrument_fails_without_config_in_strict_mode(
         self,
@@ -37,8 +34,7 @@ class TestArizeConfigResolution:
         llmops_arize_module: Any,
     ) -> None:
         """
-        PRD: PRD_01
-        API: API_SPEC_01.llmops.arize.instrument()
+        PRD: PRD_01, Requirement: F6
 
         GIVEN the LLMOPS_CONFIG_PATH environment variable is not set
         AND no config path is provided to instrument()
@@ -57,8 +53,7 @@ class TestArizeConfigResolution:
         llmops_arize_module: Any,
     ) -> None:
         """
-        PRD: PRD_01
-        API: API_SPEC_01.llmops.arize.instrument()
+        PRD: PRD_01, Requirement: F1, F2
 
         GIVEN a valid config file exists
         AND the LLMOPS_CONFIG_PATH environment variable is set to that path
@@ -79,8 +74,7 @@ class TestArizeConfigResolution:
         llmops_arize_module: Any,
     ) -> None:
         """
-        PRD: PRD_01
-        API: API_SPEC_01.llmops.arize.instrument()
+        PRD: PRD_01, Requirement: F6
 
         GIVEN a valid config file exists at "env.yaml"
         AND a valid config file exists at "arg.yaml"
@@ -111,8 +105,12 @@ class TestArizeConfigResolution:
         )
 
 
+@pytest.mark.integration
 class TestArizeFileExtensions:
-    """Tests for config file extension handling."""
+    """Tests for config file extension handling.
+
+    PRD: PRD_01, Requirement: F7
+    """
 
     def test_instrument_accepts_yaml_extension(
         self,
@@ -121,8 +119,7 @@ class TestArizeFileExtensions:
         llmops_arize_module: Any,
     ) -> None:
         """
-        PRD: PRD_01
-        API: API_SPEC_01.llmops.arize.instrument()
+        PRD: PRD_01, Requirement: F7
 
         GIVEN a valid config file exists with .yaml extension
         WHEN llmops.arize.instrument() is called with that config path
@@ -142,8 +139,7 @@ class TestArizeFileExtensions:
         llmops_arize_module: Any,
     ) -> None:
         """
-        PRD: PRD_01
-        API: API_SPEC_01.llmops.arize.instrument()
+        PRD: PRD_01, Requirement: F7
 
         GIVEN a valid config file exists with .yml extension
         WHEN llmops.arize.instrument() is called with that config path
@@ -157,8 +153,12 @@ class TestArizeFileExtensions:
         assert provider is not None
 
 
+@pytest.mark.integration
 class TestArizeLifecycle:
-    """Tests for automatic lifecycle management."""
+    """Tests for automatic lifecycle management.
+
+    PRD: PRD_01, Requirement: N4
+    """
 
     def test_instrument_registers_atexit_handler(
         self,
@@ -167,8 +167,7 @@ class TestArizeLifecycle:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """
-        PRD: PRD_01
-        API: API_SPEC_01.llmops.arize.instrument()
+        PRD: PRD_01, Requirement: N4
 
         GIVEN a valid config file exists
         WHEN llmops.arize.instrument() is called

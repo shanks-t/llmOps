@@ -1,8 +1,6 @@
-"""Contract tests for platform isolation — PRD_01.
+"""Unit tests for platform isolation.
 
-Executable contracts derived from:
-- PRD: docs/prd/PRD_01.md
-- API: docs/api_spec/API_SPEC_01.md
+Tests derived from PRD_01.
 
 Requirements covered:
 - F9: Config schema includes platform-specific sections
@@ -14,17 +12,18 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+import pytest
+
 if TYPE_CHECKING:
     from pathlib import Path
 
-# Traceability metadata
-PRD_ID = "PRD_01"
-API_SPEC_ID = "API_SPEC_01"
-CAPABILITY = "platform_isolation"
 
-
+@pytest.mark.unit
 class TestPlatformIsolation:
-    """Tests for platform-specific config section handling."""
+    """Tests for platform-specific config section handling.
+
+    PRD: PRD_01, Requirements: F9, F12, F13
+    """
 
     def test_arize_ignores_mlflow_section(
         self,
@@ -33,8 +32,7 @@ class TestPlatformIsolation:
         llmops_arize_module: Any,
     ) -> None:
         """
-        PRD: PRD_01
-        API: API_SPEC_01.llmops.arize.instrument()
+        PRD: PRD_01, Requirement: F9, F12
 
         GIVEN a config file contains both arize and mlflow sections
         WHEN llmops.arize.instrument() is called
@@ -54,8 +52,7 @@ class TestPlatformIsolation:
         llmops_mlflow_module: Any,
     ) -> None:
         """
-        PRD: PRD_01
-        API: API_SPEC_01.llmops.mlflow.instrument()
+        PRD: PRD_01, Requirement: F9, F12
 
         GIVEN a config file contains both mlflow and arize sections
         WHEN llmops.mlflow.instrument() is called

@@ -5,6 +5,11 @@ OpenTelemetry initialization for FastAPI service with dual-backend architecture:
 - Standard infrastructure traces → Jaeger (or any OTLP-compatible backend)
 - GenAI traces (OpenInference) → Phoenix (open source) or Arize AX (enterprise)
 
+This example demonstrates the "nurse handoff" pattern from PRD_02:
+- User sets up their own TracerProvider with infrastructure exporters
+- llmops.arize.instrument_existing_tracer() adds Arize as an additional destination
+- GenAI spans go to both backends; infrastructure spans only to Jaeger
+
 Environment Variables:
     SERVICE_NAME          - Service name for traces (default: "genai-service")
     DEPLOYMENT_ENV        - Environment (default: "local")
@@ -21,15 +26,19 @@ Environment Variables:
 from __future__ import annotations
 
 import os
+from typing import TYPE_CHECKING
 
 from opentelemetry import trace
 from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import SpanProcessor, TracerProvider
+from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import (
     BatchSpanProcessor,
     ConsoleSpanExporter,
     SimpleSpanProcessor,
 )
+
+if TYPE_CHECKING:
+    from fastapi import FastAPI
 
 
 def _get_bool_env(name: str, default: bool = False) -> bool:
@@ -38,50 +47,30 @@ def _get_bool_env(name: str, default: bool = False) -> bool:
     return value in ("true", "1", "yes")
 
 
-class OpenInferenceOnlySpanProcessor(SpanProcessor):
-    """
-    Filters spans so that ONLY OpenInference (GenAI) spans
-    are forwarded to the delegate processor.
-
-    Uses the openinference.span.kind attribute as the invariant
-    to identify GenAI-related spans.
-    """
-
-    def __init__(self, delegate_processor: SpanProcessor):
-        self._delegate = delegate_processor
-
-    def on_start(self, span, parent_context=None) -> None:
-        # Do nothing on start - we don't want to affect span creation or sampling
-        pass
-
-    def on_end(self, span) -> None:
-        attributes = span.attributes or {}
-
-        # Only forward spans with OpenInference semantic attribute
-        if "openinference.span.kind" in attributes:
-            self._delegate.on_end(span)
-
-    def shutdown(self) -> None:
-        self._delegate.shutdown()
-
-    def force_flush(self, timeout_millis: int | None = None) -> bool:
-        if timeout_millis is None:
-            return self._delegate.force_flush()
-        return self._delegate.force_flush(timeout_millis)
-
-
-def setup_opentelemetry() -> TracerProvider:
+def setup_opentelemetry(app: FastAPI | None = None) -> TracerProvider:
     """
     Set up OpenTelemetry with a single global TracerProvider.
 
     Configures:
     - Console exporter for debugging (if OTEL_CONSOLE_DEBUG=true)
     - OTLP exporter for infrastructure traces to Jaeger (if OTEL_ENABLED=true)
+    - FastAPI auto-instrumentation for HTTP spans (if app provided)
     - Phoenix/Arize AX exporter for GenAI traces only (based on ARIZE_MODE)
     - Google ADK instrumentation for GenAI semantic spans
 
+    Args:
+        app: Optional FastAPI application instance. If provided, FastAPI
+             auto-instrumentation will be applied using the same TracerProvider.
+             This creates HTTP spans (GET /health, POST /chat, etc.) that will
+             appear in Jaeger but be filtered from Arize (no openinference.span.kind).
+
     Returns:
         TracerProvider instance for lifecycle management (shutdown)
+
+    Note:
+        When app is provided, this function MUST be called at module level
+        (after app creation but before uvicorn starts) to ensure the FastAPI
+        middleware stack is properly instrumented.
     """
     # ------------------------------------
     # Configuration from environment
@@ -133,9 +122,27 @@ def setup_opentelemetry() -> TracerProvider:
         print(f"[observability] OTLP exporter enabled → {otel_endpoint}")
 
     # ------------------------------------
+    # FastAPI auto-instrumentation
+    # (Creates HTTP spans for all routes)
+    # ------------------------------------
+    # These spans do NOT have openinference.span.kind attribute, so they will
+    # be filtered out by OpenInferenceSpanFilter when sending to Arize.
+    # They will still appear in Jaeger (all spans go there).
+    if app is not None:
+        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
+        FastAPIInstrumentor.instrument_app(app, tracer_provider=tracer_provider)
+        print("[observability] FastAPI auto-instrumentation enabled")
+
+    # ------------------------------------
     # Phoenix / Arize AX exporter
     # (ONLY GenAI spans go here)
     # ------------------------------------
+    # Using llmops SDK's instrument_existing_tracer() for the "nurse handoff" pattern:
+    # - Adds Arize as additional export destination
+    # - Only sends GenAI (OpenInference) spans by default
+    # - Applies Google ADK auto-instrumentation
+
     if arize_mode == "phoenix":
         arize_endpoint = os.getenv("ARIZE_ENDPOINT")
         if not arize_endpoint:
@@ -144,6 +151,9 @@ def setup_opentelemetry() -> TracerProvider:
                 "Skipping Phoenix exporter."
             )
         else:
+            # Phoenix (open source) uses standard OTLP without auth
+            # We still use the SDK's OpenInferenceSpanFilter for consistency
+            from llmops._internal.span_filter import OpenInferenceSpanFilter
             from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
                 OTLPSpanExporter as PhoenixOTLPExporter,
             )
@@ -152,55 +162,38 @@ def setup_opentelemetry() -> TracerProvider:
             phoenix_batch_processor = BatchSpanProcessor(phoenix_exporter)
 
             # Wrap with filter to only send GenAI spans
-            phoenix_filtered_processor = OpenInferenceOnlySpanProcessor(phoenix_batch_processor)
+            phoenix_filtered_processor = OpenInferenceSpanFilter(phoenix_batch_processor)
             tracer_provider.add_span_processor(phoenix_filtered_processor)
             print(f"[observability] Phoenix exporter enabled (GenAI spans only) -> {arize_endpoint}")
 
+            # Apply Google ADK instrumentation manually for Phoenix mode
+            from openinference.instrumentation.google_adk import GoogleADKInstrumentor
+
+            GoogleADKInstrumentor().instrument(tracer_provider=tracer_provider)
+            print("[observability] Google ADK instrumentation enabled")
+
     elif arize_mode == "ax":
-        arize_endpoint = os.getenv("ARIZE_ENDPOINT")
-        arize_api_key = os.getenv("ARIZE_API_KEY")
-        arize_space_id = os.getenv("ARIZE_SPACE_ID")
+        # Use llmops SDK with config file for Arize AX
+        # Config file (llmops.yaml) contains:
+        # - endpoint, api_key, space_id (from ${ENV_VAR} substitution)
+        # - project_name for Arize AX dashboard
+        # - filter_to_genai_spans=true (only GenAI spans go to Arize)
+        # - auto-instrumentation settings for Google ADK
+        import llmops
 
-        if not all([arize_endpoint, arize_api_key, arize_space_id]):
-            print(
-                "[observability] WARNING: ARIZE_MODE=ax requires ARIZE_ENDPOINT, "
-                "ARIZE_API_KEY, and ARIZE_SPACE_ID. Skipping Arize AX exporter."
-            )
-        else:
-            from arize.otel import HTTPSpanExporter
-
-            # Type narrowing: at this point we know these are not None
-            assert arize_endpoint is not None
-            assert arize_api_key is not None
-            assert arize_space_id is not None
-
-            ax_exporter = HTTPSpanExporter(
-                endpoint=arize_endpoint,
-                api_key=arize_api_key,
-                space_id=arize_space_id,
-            )
-            ax_batch_processor = BatchSpanProcessor(ax_exporter)
-
-            # Wrap with filter to only send GenAI spans
-            ax_filtered_processor = OpenInferenceOnlySpanProcessor(ax_batch_processor)
-            tracer_provider.add_span_processor(ax_filtered_processor)
-            print(f"[observability] Arize AX exporter enabled (GenAI spans only) -> {arize_endpoint}")
+        llmops.arize.instrument_existing_tracer(config_path="llmops.yaml")
+        print("[observability] Arize AX exporter enabled via llmops SDK (GenAI spans only)")
 
     elif arize_mode == "disabled":
         print("[observability] Phoenix/Arize disabled")
+        # Still apply Google ADK instrumentation for local development
+        from openinference.instrumentation.google_adk import GoogleADKInstrumentor
+
+        GoogleADKInstrumentor().instrument(tracer_provider=tracer_provider)
+        print("[observability] Google ADK instrumentation enabled")
 
     else:
         print(f"[observability] WARNING: Unknown ARIZE_MODE '{arize_mode}', skipping")
-
-    # ------------------------------------
-    # Google ADK instrumentation
-    # ------------------------------------
-    # Must run AFTER tracer provider is set.
-    # Will emit OpenInference semantic spans for GenAI operations.
-    from openinference.instrumentation.google_adk import GoogleADKInstrumentor
-
-    GoogleADKInstrumentor().instrument(tracer_provider=tracer_provider)
-    print("[observability] Google ADK instrumentation enabled")
 
     print(
         f"[observability] Initialized: service={service_name}, "
