@@ -121,7 +121,7 @@ class ArizePlatform:
         api_key: str | None = None,
         space_id: str | None = None,
         project_name: str | None = None,
-        filter_to_genai_spans: bool = True,
+        filter_to_genai_spans: bool | None = None,
     ) -> None:
         """Add Arize instrumentation to an existing global TracerProvider.
 
@@ -146,9 +146,10 @@ class ArizePlatform:
             api_key: Arize API key. Overrides config file value.
             space_id: Arize space ID. Overrides config file value.
             project_name: Arize project name. Overrides config file value.
-            filter_to_genai_spans: If True (default), only spans with
-                                   openinference.span.kind attribute are
-                                   sent to Arize. Set to False to send all spans.
+            filter_to_genai_spans: If True, only spans with openinference.span.kind
+                                   attribute are sent to Arize. If False, all spans
+                                   are sent. If None (default), uses config file
+                                   value or defaults to True.
 
         Returns:
             None. The function modifies the existing provider in place.
@@ -199,12 +200,11 @@ class ArizePlatform:
             filter_to_genai_spans=filter_to_genai_spans,
         )
 
-        # Resolve filter setting: kwarg > config > default (True for existing tracer)
-        should_filter = (
-            filter_to_genai_spans
-            if arize_config.filter_to_genai_spans is None
-            else arize_config.filter_to_genai_spans
-        )
+        # Resolve filter setting: config value > default (True for existing tracer)
+        # The config already has kwarg overrides merged in via _resolve_config
+        should_filter = arize_config.filter_to_genai_spans
+        if should_filter is None:
+            should_filter = True  # Default for instrument_existing_tracer
 
         # Create span processor for Arize
         try:
@@ -268,7 +268,7 @@ class ArizePlatform:
         api_key: str | None,
         space_id: str | None,
         project_name: str | None,
-        filter_to_genai_spans: bool,
+        filter_to_genai_spans: bool | None,
     ) -> ArizeConfig:
         """Resolve ArizeConfig from config file and/or kwargs."""
         if config_path is not None:

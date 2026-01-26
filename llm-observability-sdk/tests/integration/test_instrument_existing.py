@@ -516,7 +516,7 @@ arize:
         processors = existing_provider._active_span_processor._span_processors
         assert len(processors) > 0
 
-    def test_instrument_existing_tracer_defaults_filter_true(
+    def test_instrument_existing_tracer_defaults_filter_none(
         self,
         llmops_arize_module: Any,
     ) -> None:
@@ -525,17 +525,20 @@ arize:
 
         GIVEN the default behavior of instrument_existing_tracer()
         WHEN compared to instrument()
-        THEN filter_to_genai_spans defaults to True (vs False for instrument())
+        THEN filter_to_genai_spans defaults to None (uses config file, or True if not set)
 
-        This test documents the intentional difference in defaults.
+        This test documents that the signature default is None, allowing config file
+        values to be respected. The effective default (when neither kwarg nor config
+        is set) is True for existing tracer.
         """
-        # Verify the function signature has filter_to_genai_spans with default True
+        # Verify the function signature has filter_to_genai_spans with default None
+        # This allows config file values to be respected
         sig = inspect.signature(llmops_arize_module.instrument_existing_tracer)
         param = sig.parameters.get("filter_to_genai_spans")
 
         assert param is not None, "filter_to_genai_spans parameter should exist"
-        assert param.default is True, (
-            f"filter_to_genai_spans should default to True, got {param.default}"
+        assert param.default is None, (
+            f"filter_to_genai_spans should default to None to allow config override, got {param.default}"
         )
 
 

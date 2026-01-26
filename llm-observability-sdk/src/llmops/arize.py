@@ -56,7 +56,7 @@ def instrument_existing_tracer(
     api_key: str | None = None,
     space_id: str | None = None,
     project_name: str | None = None,
-    filter_to_genai_spans: bool = True,
+    filter_to_genai_spans: bool | None = None,
 ) -> None:
     """Add Arize telemetry to an existing global TracerProvider.
 
@@ -81,9 +81,10 @@ def instrument_existing_tracer(
         api_key: Arize API key. Overrides config file value.
         space_id: Arize space ID. Overrides config file value.
         project_name: Arize project name. Overrides config file value.
-        filter_to_genai_spans: If True (default), only spans with
-                               openinference.span.kind attribute are
-                               sent to Arize. Set to False to send all spans.
+        filter_to_genai_spans: If True, only spans with openinference.span.kind
+                               attribute are sent to Arize. If False, all spans
+                               are sent. If None (default), uses config file
+                               value or defaults to True.
 
     Returns:
         None. The function modifies the existing provider in place.
