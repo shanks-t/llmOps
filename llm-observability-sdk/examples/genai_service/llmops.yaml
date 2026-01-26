@@ -23,7 +23,7 @@ arize:
   
   # Only send GenAI spans to Arize (default for instrument_existing_tracer)
   # Infrastructure spans (HTTP, DB, etc.) stay in Jaeger only
-  filter_to_genai_spans: true
+  filter_to_genai_spans: false
 
 instrumentation:
   # Auto-instrument Google ADK for GenAI semantic spans

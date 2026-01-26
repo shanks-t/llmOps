@@ -18,6 +18,10 @@ dependencies = [
     "opentelemetry-sdk>=1.28.0",
     "opentelemetry-exporter-otlp-proto-http>=1.28.0",
 
+    # FastAPI auto-instrumentation for HTTP request spans
+    # (Used to verify OpenInferenceSpanFilter - HTTP spans should NOT go to Arize)
+    "opentelemetry-instrumentation-fastapi>=0.48b0",
+
     # OpenInference for GenAI tracing
     "openinference-instrumentation-google-adk>=0.1.5",
 
