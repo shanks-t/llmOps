@@ -5,8 +5,8 @@
 # Approach
 # - Root is the single entry point for all developer workflows.
 # - Nested services are exposed via `mod` modules and root aliases.
-# - Use `sdk::recipe` for full access, or root aliases like
-#   `sdk-lint` and `all-light` for convenience.
+# - Use `sdk::recipe` or `demo::recipe` for full access, or root aliases like
+#   `sdk-lint`, `demo-run`, and `all-light` for convenience.
 # - Keep paths relative so the Justfiles work on any developer machine.
 #
 # Manual
@@ -16,10 +16,13 @@
 # - Run lightweight checks: `just` or `just all-light`
 # - Run SDK unit tests: `just sdk-test-unit`
 # - Run all SDK tests: `just sdk-test`
+# - Run demo server: `just demo-run`
+# - Test demo chat: `just demo-chat`
 #
 # Module Pattern
 # This Justfile exposes child Justfiles as modules.
 # - `just sdk::recipe` maps to llm-observability-sdk/Justfile
+# - `just demo::recipe` maps to llm-observability-sdk/examples/llmops_demo/Justfile
 #
 # For example commands (chat, travel, etc.), pass arguments positionally.
 # Use: `just chat "Hello"` not `just chat message="Hello"`
@@ -29,6 +32,7 @@ set dotenv-load := true
 set positional-arguments := true
 
 mod sdk "llm-observability-sdk/Justfile"
+mod demo "llm-observability-sdk/examples/llmops_demo/Justfile"
 
 # Default recipe runs lightweight checks for SDK
 [doc('Run lightweight checks for SDK')]
@@ -152,6 +156,59 @@ stop-test-backends: sdk::stop-test-backends
 # Run full E2E workflow (start backends, test, stop)
 [group('dev')]
 test-e2e-full: sdk::test-e2e-full
+
+# =============================================================================
+# Demo App Aliases (llmops_demo example)
+# =============================================================================
+
+# Run the demo FastAPI server with hot reload
+[group('demo')]
+demo-run: demo::run
+
+# Install demo dependencies
+[group('demo')]
+demo-install: demo::install
+
+# Run demo linting
+[group('demo')]
+demo-lint: demo::lint
+
+# Run demo type checking
+[group('demo')]
+demo-typecheck: demo::typecheck
+
+# Run all demo checks (lint + typecheck)
+[group('demo')]
+demo-check: demo::check
+
+# Test the demo /chat endpoint (requires server running)
+[group('demo')]
+demo-chat: demo::test-chat
+
+# Test demo with time query
+[group('demo')]
+demo-time: demo::test-time
+
+# Test demo with both tools (weather + time)
+[group('demo')]
+demo-both: demo::test-both
+
+# Run all demo endpoint tests
+[group('demo')]
+demo-test-all: demo::test-all
+
+# Show demo service info
+[group('demo')]
+demo-info: demo::test-root
+
+# Show demo health check
+[group('demo')]
+demo-health: demo::test-health
+
+# Show demo Justfile recipes
+[group('info')]
+demo-recipes:
+    just --list demo
 
 # =============================================================================
 # Example Endpoints
