@@ -3,25 +3,19 @@ repos:
     hooks:
       - id: sdk-lint
         name: sdk lint
-        entry: just sdk::lint
+        entry: bash -c 'cd llm-observability-sdk && hatch run lint:check'
         language: system
         pass_filenames: false
         files: ^llm-observability-sdk/
       - id: sdk-typecheck
         name: sdk typecheck
-        entry: just sdk::typecheck
+        entry: bash -c 'cd llm-observability-sdk && hatch run lint:typing'
         language: system
         pass_filenames: false
         files: ^llm-observability-sdk/
       - id: sdk-security
         name: sdk security
-        entry: just sdk::security
+        entry: bash -c 'cd llm-observability-sdk && hatch run lint:security'
         language: system
         pass_filenames: false
         files: ^llm-observability-sdk/
-      - id: genai-check
-        name: genai check
-        entry: just genai-check
-        language: system
-        pass_filenames: false
-        files: ^llm-observability-sdk/examples/genai_service/

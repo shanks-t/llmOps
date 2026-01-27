@@ -149,7 +149,8 @@ class FakeArizeOtel:
 
     def get_finished_spans(self) -> tuple[ReadableSpan, ...]:
         """Return all finished spans captured by the exporter."""
-        return self._exporter.get_finished_spans()
+        spans: tuple[ReadableSpan, ...] = self._exporter.get_finished_spans()
+        return spans
 
     def clear_spans(self) -> None:
         """Clear all captured spans."""
