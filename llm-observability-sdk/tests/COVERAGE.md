@@ -87,49 +87,6 @@ pytest tests/integration/ -v  # Integration tests by directory
 
 ---
 
-## PRD_02 — Instrument Existing Provider
-
-**Source Documents:**
-- PRD: [docs/prd/PRD_02.md](../docs/prd/PRD_02.md)
-- API Spec: [docs/api_spec/API_SPEC_02.md](../docs/api_spec/API_SPEC_02.md)
-
-> **Status:** All tests marked `xfail` pending implementation.
-
-### Functional Requirements
-
-| ID | Requirement | Test Location | Status |
-|----|-------------|---------------|--------|
-| F1 | `instrument_existing_tracer()` adds to provider | `integration/test_instrument_existing.py::TestAddToExistingProvider` | xfail |
-| F2 | Accepts programmatic credentials | `integration/test_instrument_existing.py::TestProgrammaticConfiguration` | xfail |
-| F3 | Accepts optional config file path | `integration/test_instrument_existing.py::test_config_file_provides_defaults` | xfail |
-| F4 | Programmatic credentials override config | `integration/test_instrument_existing.py::test_kwargs_override_config_file` | xfail |
-| F5 | Only OpenInference spans sent by default | `integration/test_instrument_existing.py::TestFilteringDefaultBehavior` | xfail |
-| F6 | `filter_to_genai_spans=False` sends all | `integration/test_instrument_existing.py::test_filter_can_be_disabled` | xfail |
-| F7 | Duplicate calls log warning and skip | `integration/test_duplicate_guard.py::TestDuplicateInstrumentationGuard` | xfail |
-| F8 | Google ADK/GenAI auto-instrumented | `integration/test_instrument_existing.py::TestAddToExistingProvider` | xfail |
-
-### Non-Functional Requirements
-
-| ID | Requirement | Test Location | Status |
-|----|-------------|---------------|--------|
-| N1 | Telemetry failures never raise | `integration/test_instrument_existing.py::TestTelemetrySafety` | xfail |
-| N2 | Non-SDK provider logs warning | `integration/test_instrument_existing.py::TestNonSDKProviderHandling` | xfail |
-| N3 | No atexit handler registered | `integration/test_instrument_existing.py::TestNoAtexitRegistration` | xfail |
-| N4 | Works without config file | `integration/test_instrument_existing.py::test_works_without_config_file` | xfail |
-
-### OpenInferenceSpanFilter Unit Tests
-
-| Capability | Test Location | Status |
-|------------|---------------|--------|
-| Forwards OpenInference spans | `unit/test_span_filter.py::test_filter_forwards_openinference_spans` | xfail |
-| Blocks non-OpenInference spans | `unit/test_span_filter.py::test_filter_blocks_non_openinference_spans` | xfail |
-| Handles empty attributes | `unit/test_span_filter.py::test_filter_handles_empty_attributes` | xfail |
-| Handles None attributes | `unit/test_span_filter.py::test_filter_handles_none_attributes` | xfail |
-| Delegates shutdown | `unit/test_span_filter.py::test_filter_delegates_shutdown` | xfail |
-| Delegates force_flush | `unit/test_span_filter.py::test_filter_delegates_force_flush` | xfail |
-
----
-
 ## Test Directory Structure
 
 ```
@@ -138,14 +95,11 @@ tests/
 │   ├── test_config.py                 # Config parsing, defaults, env vars
 │   ├── test_lazy_loading.py           # Module import behavior
 │   ├── test_platform_isolation.py     # Platform registry, cross-config
-│   ├── test_span_filter.py            # OpenInferenceSpanFilter (xfail)
 │   └── test_validation.py             # Strict/permissive mode
 ├── integration/                       # Real components, FakeArizeOtel
 │   ├── test_arize_instrument.py       # Full instrument() flow
 │   ├── test_arize_telemetry.py        # Config→arize.otel.register()
 │   ├── test_auto_instrumentation.py   # Google ADK/GenAI instrumentors
-│   ├── test_duplicate_guard.py        # Idempotency (xfail)
-│   ├── test_instrument_existing.py    # Adding to existing provider (xfail)
 │   └── test_mlflow_instrument.py      # MLflow skeleton
 ├── conftest.py                        # Shared fixtures
 ├── fakes.py                           # FakeArizeOtel test double
@@ -158,15 +112,12 @@ tests/
 
 When implementing functionality:
 
-1. **Find relevant tests:** Search for `PRD: PRD_02` in test docstrings using grep
+1. **Find relevant tests:** Search for `PRD:` in test docstrings using grep
 2. **Run tests:** `just test` (all) or `just test-unit` / `just test-integration`
 3. **Check coverage:** Reference this file for requirement → test mapping
 4. **Mark tests passing:** Remove `xfail` markers as implementation lands
 
 ```
-You are implementing functionality for PRD_02.
 Run `just test` to execute all tests.
 Tests are in tests/unit/ and tests/integration/.
-Search for "PRD: PRD_02" in docstrings to find relevant tests.
-Remove @pytest.mark.xfail as each requirement is implemented.
 ```

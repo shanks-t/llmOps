@@ -50,9 +50,6 @@ class ArizeConfig:
     log_to_console: bool = False
     # Print configuration details to stdout
     verbose: bool = False
-    # Filter to only send OpenInference (GenAI) spans
-    # Default varies by function: False for instrument(), True for instrument_existing_tracer()
-    filter_to_genai_spans: bool | None = None
 
 
 @dataclass
@@ -195,7 +192,6 @@ def _parse_arize_config(
         batch=data.get("batch", True),
         log_to_console=data.get("log_to_console", False),
         verbose=data.get("verbose", False),
-        filter_to_genai_spans=data.get("filter_to_genai_spans"),
     )
 
 
@@ -323,86 +319,3 @@ def load_config(path: Path, strict: bool | None = None) -> LLMOpsConfig:
         )
 
     return config
-
-
-def create_arize_config_from_kwargs(
-    *,
-    endpoint: str | None = None,
-    api_key: str | None = None,
-    space_id: str | None = None,
-    project_name: str | None = None,
-    filter_to_genai_spans: bool | None = None,
-) -> ArizeConfig:
-    """Create ArizeConfig from programmatic keyword arguments.
-
-    This is used by instrument_existing_tracer() when no config file is provided.
-
-    Args:
-        endpoint: Arize OTLP endpoint URL.
-        api_key: Arize API key.
-        space_id: Arize space ID.
-        project_name: Optional project name.
-        filter_to_genai_spans: Whether to filter to GenAI spans only.
-
-    Returns:
-        ArizeConfig populated from kwargs.
-
-    Raises:
-        ConfigurationError: If required credentials are missing.
-    """
-    if not endpoint:
-        raise ConfigurationError("endpoint is required")
-    if not api_key:
-        raise ConfigurationError("api_key is required when not using config file")
-    if not space_id:
-        raise ConfigurationError("space_id is required when not using config file")
-
-    return ArizeConfig(
-        endpoint=endpoint,
-        api_key=api_key,
-        space_id=space_id,
-        project_name=project_name,
-        filter_to_genai_spans=filter_to_genai_spans,
-    )
-
-
-def merge_arize_config_with_kwargs(
-    config: ArizeConfig,
-    *,
-    endpoint: str | None = None,
-    api_key: str | None = None,
-    space_id: str | None = None,
-    project_name: str | None = None,
-    filter_to_genai_spans: bool | None = None,
-) -> ArizeConfig:
-    """Merge ArizeConfig from file with programmatic overrides.
-
-    Kwargs take precedence over config file values.
-
-    Args:
-        config: Base ArizeConfig from config file.
-        endpoint: Override endpoint.
-        api_key: Override API key.
-        space_id: Override space ID.
-        project_name: Override project name.
-        filter_to_genai_spans: Override filter setting.
-
-    Returns:
-        New ArizeConfig with overrides applied.
-    """
-    return ArizeConfig(
-        endpoint=endpoint if endpoint is not None else config.endpoint,
-        api_key=api_key if api_key is not None else config.api_key,
-        space_id=space_id if space_id is not None else config.space_id,
-        project_name=project_name if project_name is not None else config.project_name,
-        certificate_file=config.certificate_file,
-        transport=config.transport,
-        batch=config.batch,
-        log_to_console=config.log_to_console,
-        verbose=config.verbose,
-        filter_to_genai_spans=(
-            filter_to_genai_spans
-            if filter_to_genai_spans is not None
-            else config.filter_to_genai_spans
-        ),
-    )

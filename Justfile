@@ -5,8 +5,8 @@
 # Approach
 # - Root is the single entry point for all developer workflows.
 # - Nested services are exposed via `mod` modules and root aliases.
-# - Use `sdk::recipe` or `genai::recipe` for full access, or root aliases like
-#   `sdk-lint`, `genai-run`, and `all-light` for convenience.
+# - Use `sdk::recipe` for full access, or root aliases like
+#   `sdk-lint` and `all-light` for convenience.
 # - Keep paths relative so the Justfiles work on any developer machine.
 #
 # Manual
@@ -15,13 +15,11 @@
 # Quickstart
 # - Run lightweight checks: `just` or `just all-light`
 # - Run SDK unit tests: `just sdk-test-unit`
-# - Run GenAI service: `just genai-run`
-# - Send a request: `just genai::chat`
+# - Run all SDK tests: `just sdk-test`
 #
 # Module Pattern
 # This Justfile exposes child Justfiles as modules.
 # - `just sdk::recipe` maps to llm-observability-sdk/Justfile
-# - `just genai::recipe` maps to llm-observability-sdk/examples/genai_service/Justfile
 #
 # For example commands (chat, travel, etc.), pass arguments positionally.
 # Use: `just chat "Hello"` not `just chat message="Hello"`
@@ -31,11 +29,10 @@ set dotenv-load := true
 set positional-arguments := true
 
 mod sdk "llm-observability-sdk/Justfile"
-mod genai "llm-observability-sdk/examples/genai_service/Justfile"
 
-# Default recipe runs lightweight checks across projects
-[doc('Run lightweight checks for SDK and GenAI')]
-all-light: sdk::lint sdk::typecheck sdk::security sdk::test-unit genai::lint genai::typecheck genai::format-check
+# Default recipe runs lightweight checks for SDK
+[doc('Run lightweight checks for SDK')]
+all-light: sdk::lint sdk::typecheck sdk::security sdk::test-unit
 
 default: all-light
 
@@ -62,39 +59,6 @@ list group="":
 # Delegate commands to the SDK Justfile via module
 # Usage: just sdk::recipe [args...]
 # Example: just sdk::test
-
-# =============================================================================
-# GenAI Service Commands (modules)
-# =============================================================================
-
-# Delegate commands to the GenAI Service Justfile via module
-# Usage: just genai::recipe [args...]
-# Example: just genai::run
-
-# Run GenAI service
-[group('genai')]
-genai-run: genai::run
-
-# Run GenAI service with debug output
-[group('genai')]
-genai-run-debug: genai::run-debug
-
-# Run GenAI quality checks (lint + typecheck)
-[group('genai')]
-genai-check: genai::check
-
-# Start Jaeger for GenAI service
-[group('genai')]
-genai-start-jaeger: genai::start-jaeger
-
-# Install GenAI service dependencies
-[group('genai')]
-genai-install: genai::install
-
-# Show GenAI service recipes
-[group('info')]
-genai-recipes:
-    just --list genai
 
 # =============================================================================
 # Common Aliases (convenience shortcuts)
@@ -127,22 +91,6 @@ sdk-typecheck: sdk::typecheck
 # SDK - Bandit security scanner
 [group('quality')]
 sdk-security: sdk::security
-
-# GenAI - Ruff linter
-[group('quality')]
-genai-lint: genai::lint
-
-# GenAI - Ruff formatter
-[group('quality')]
-genai-format: genai::format
-
-# GenAI - Check formatting without changes
-[group('quality')]
-genai-format-check: genai::format-check
-
-# GenAI - MyPy type checker
-[group('quality')]
-genai-typecheck: genai::typecheck
 
 # =============================================================================
 # Testing Aliases

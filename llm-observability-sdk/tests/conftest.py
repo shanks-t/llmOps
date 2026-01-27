@@ -89,20 +89,8 @@ def _create_test_tracer_provider(
 def reset_otel_state() -> Generator[None, None, None]:
     """Reset OpenTelemetry global state before and after each test."""
     _reset_trace_globals()
-    _reset_instrumented_providers()
     yield
     _reset_trace_globals()
-    _reset_instrumented_providers()
-
-
-def _reset_instrumented_providers() -> None:
-    """Reset Arize instrumentation state for test isolation."""
-    try:
-        from llmops._platforms.arize import reset_arize_instrumentation
-
-        reset_arize_instrumentation()
-    except ImportError:
-        pass  # Module may not be loaded yet
 
 
 @pytest.fixture(autouse=True)
@@ -147,22 +135,6 @@ def mock_sdk_telemetry(
             monkeypatch.setattr(
                 module, "create_tracer_provider", mock_create_tracer_provider
             )
-
-    # Mock _create_span_processor for instrument_existing_tracer tests
-    def mock_create_span_processor(
-        self: Any, config: ArizeConfig
-    ) -> SimpleSpanProcessor:
-        return SimpleSpanProcessor(in_memory_exporter)
-
-    from llmops._platforms.arize import ArizePlatform
-
-    monkeypatch.setattr(
-        ArizePlatform, "_create_span_processor", mock_create_span_processor
-    )
-    # Also patch the public method for backward compatibility
-    monkeypatch.setattr(
-        ArizePlatform, "create_arize_span_processor", mock_create_span_processor
-    )
 
     noop_config = LLMOpsConfig(
         service=ServiceConfig(name="llmops-noop"),
