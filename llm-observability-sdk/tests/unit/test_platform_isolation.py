@@ -25,42 +25,42 @@ class TestPlatformIsolation:
     PRD: PRD_01, Requirements: F9, F12, F13
     """
 
-    def test_arize_ignores_mlflow_section(
+    def test_arize_platform_ignores_mlflow_section(
         self,
         tmp_path: "Path",
         valid_arize_config_with_mlflow_content: str,
-        llmops_arize_module: Any,
+        llmops_module: Any,
     ) -> None:
         """
         PRD: PRD_01, Requirement: F9, F12
 
         GIVEN a config file contains both arize and mlflow sections
-        WHEN llmops.arize.instrument() is called
+        WHEN llmops.init() is called with platform: arize
         THEN Arize initializes successfully using only the arize section
         """
         config_path = tmp_path / "llmops.yaml"
         config_path.write_text(valid_arize_config_with_mlflow_content)
 
-        provider = llmops_arize_module.instrument(config_path=config_path)
+        llmops_module.init(config=config_path)
 
-        assert provider is not None
+        assert llmops_module.is_configured()
 
-    def test_mlflow_ignores_arize_section(
+    def test_mlflow_platform_ignores_arize_section(
         self,
         tmp_path: "Path",
         valid_mlflow_config_with_arize_content: str,
-        llmops_mlflow_module: Any,
+        llmops_module: Any,
     ) -> None:
         """
         PRD: PRD_01, Requirement: F9, F12
 
         GIVEN a config file contains both mlflow and arize sections
-        WHEN llmops.mlflow.instrument() is called
+        WHEN llmops.init() is called with platform: mlflow
         THEN MLflow initializes successfully using only the mlflow section
         """
         config_path = tmp_path / "llmops.yaml"
         config_path.write_text(valid_mlflow_config_with_arize_content)
 
-        provider = llmops_mlflow_module.instrument(config_path=config_path)
+        llmops_module.init(config=config_path)
 
-        assert provider is not None
+        assert llmops_module.is_configured()

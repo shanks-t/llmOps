@@ -37,7 +37,9 @@ class TestArizeConfigOptions:
         WHEN config is loaded
         THEN transport defaults to 'http'
         """
-        config_content = """service:
+        config_content = """platform: arize
+
+service:
   name: test-service
 
 arize:
@@ -46,9 +48,10 @@ arize:
         config_path = tmp_path / "config.yaml"
         config_path.write_text(config_content)
 
-        from llmops.config import load_config
+        from llmops.sdk.config.load import load_config
 
         config = load_config(config_path)
+        assert config.arize is not None
         assert config.arize.transport == "http"
 
     def test_transport_grpc_parsed(
@@ -62,7 +65,9 @@ arize:
         WHEN config is loaded
         THEN transport is 'grpc'
         """
-        config_content = """service:
+        config_content = """platform: arize
+
+service:
   name: test-service
 
 arize:
@@ -72,9 +77,10 @@ arize:
         config_path = tmp_path / "config.yaml"
         config_path.write_text(config_content)
 
-        from llmops.config import load_config
+        from llmops.sdk.config.load import load_config
 
         config = load_config(config_path)
+        assert config.arize is not None
         assert config.arize.transport == "grpc"
 
     def test_invalid_transport_defaults_to_http(
@@ -88,7 +94,9 @@ arize:
         WHEN config is loaded
         THEN transport defaults to 'http' with a warning
         """
-        config_content = """service:
+        config_content = """platform: arize
+
+service:
   name: test-service
 
 arize:
@@ -98,9 +106,10 @@ arize:
         config_path = tmp_path / "config.yaml"
         config_path.write_text(config_content)
 
-        from llmops.config import load_config
+        from llmops.sdk.config.load import load_config
 
         config = load_config(config_path)
+        assert config.arize is not None
         assert config.arize.transport == "http"
 
     def test_batch_defaults_to_true(
@@ -114,7 +123,9 @@ arize:
         WHEN config is loaded
         THEN batch defaults to True
         """
-        config_content = """service:
+        config_content = """platform: arize
+
+service:
   name: test-service
 
 arize:
@@ -123,9 +134,10 @@ arize:
         config_path = tmp_path / "config.yaml"
         config_path.write_text(config_content)
 
-        from llmops.config import load_config
+        from llmops.sdk.config.load import load_config
 
         config = load_config(config_path)
+        assert config.arize is not None
         assert config.arize.batch is True
 
     def test_batch_false_parsed(
@@ -139,7 +151,9 @@ arize:
         WHEN config is loaded
         THEN batch is False
         """
-        config_content = """service:
+        config_content = """platform: arize
+
+service:
   name: test-service
 
 arize:
@@ -149,9 +163,10 @@ arize:
         config_path = tmp_path / "config.yaml"
         config_path.write_text(config_content)
 
-        from llmops.config import load_config
+        from llmops.sdk.config.load import load_config
 
         config = load_config(config_path)
+        assert config.arize is not None
         assert config.arize.batch is False
 
     def test_log_to_console_defaults_to_false(
@@ -165,7 +180,9 @@ arize:
         WHEN config is loaded
         THEN log_to_console defaults to False
         """
-        config_content = """service:
+        config_content = """platform: arize
+
+service:
   name: test-service
 
 arize:
@@ -174,9 +191,10 @@ arize:
         config_path = tmp_path / "config.yaml"
         config_path.write_text(config_content)
 
-        from llmops.config import load_config
+        from llmops.sdk.config.load import load_config
 
         config = load_config(config_path)
+        assert config.arize is not None
         assert config.arize.log_to_console is False
 
     def test_log_to_console_true_parsed(
@@ -190,7 +208,9 @@ arize:
         WHEN config is loaded
         THEN log_to_console is True
         """
-        config_content = """service:
+        config_content = """platform: arize
+
+service:
   name: test-service
 
 arize:
@@ -200,9 +220,10 @@ arize:
         config_path = tmp_path / "config.yaml"
         config_path.write_text(config_content)
 
-        from llmops.config import load_config
+        from llmops.sdk.config.load import load_config
 
         config = load_config(config_path)
+        assert config.arize is not None
         assert config.arize.log_to_console is True
 
     def test_verbose_defaults_to_false(
@@ -216,7 +237,9 @@ arize:
         WHEN config is loaded
         THEN verbose defaults to False
         """
-        config_content = """service:
+        config_content = """platform: arize
+
+service:
   name: test-service
 
 arize:
@@ -225,9 +248,10 @@ arize:
         config_path = tmp_path / "config.yaml"
         config_path.write_text(config_content)
 
-        from llmops.config import load_config
+        from llmops.sdk.config.load import load_config
 
         config = load_config(config_path)
+        assert config.arize is not None
         assert config.arize.verbose is False
 
     def test_verbose_true_parsed(
@@ -241,7 +265,9 @@ arize:
         WHEN config is loaded
         THEN verbose is True
         """
-        config_content = """service:
+        config_content = """platform: arize
+
+service:
   name: test-service
 
 arize:
@@ -251,9 +277,10 @@ arize:
         config_path = tmp_path / "config.yaml"
         config_path.write_text(config_content)
 
-        from llmops.config import load_config
+        from llmops.sdk.config.load import load_config
 
         config = load_config(config_path)
+        assert config.arize is not None
         assert config.arize.verbose is True
 
 
@@ -278,7 +305,9 @@ class TestTLSCertificateConfig:
         cert_file = tmp_path / "ca-bundle.pem"
         cert_file.write_text("dummy cert content")
 
-        config_content = f"""service:
+        config_content = f"""platform: arize
+
+service:
   name: test-service
 
 arize:
@@ -288,9 +317,10 @@ arize:
         config_path = tmp_path / "config.yaml"
         config_path.write_text(config_content)
 
-        from llmops.config import load_config
+        from llmops.sdk.config.load import load_config
 
         config = load_config(config_path)
+        assert config.arize is not None
         assert config.arize.certificate_file == str(cert_file)
 
     def test_certificate_file_from_env_var(
@@ -310,7 +340,9 @@ arize:
         cert_file.write_text("dummy cert content")
         monkeypatch.setenv("OTEL_EXPORTER_OTLP_CERTIFICATE", str(cert_file))
 
-        config_content = """service:
+        config_content = """platform: arize
+
+service:
   name: test-service
 
 arize:
@@ -319,9 +351,10 @@ arize:
         config_path = tmp_path / "config.yaml"
         config_path.write_text(config_content)
 
-        from llmops.config import load_config
+        from llmops.sdk.config.load import load_config
 
         config = load_config(config_path)
+        assert config.arize is not None
         assert config.arize.certificate_file == str(cert_file)
 
     def test_config_file_overrides_env_var(
@@ -343,7 +376,9 @@ arize:
 
         monkeypatch.setenv("OTEL_EXPORTER_OTLP_CERTIFICATE", str(env_cert))
 
-        config_content = f"""service:
+        config_content = f"""platform: arize
+
+service:
   name: test-service
 
 arize:
@@ -353,9 +388,10 @@ arize:
         config_path = tmp_path / "config.yaml"
         config_path.write_text(config_content)
 
-        from llmops.config import load_config
+        from llmops.sdk.config.load import load_config
 
         config = load_config(config_path)
+        assert config.arize is not None
         assert config.arize.certificate_file == str(config_cert)
 
     def test_relative_path_resolved_from_config_dir(
@@ -377,7 +413,9 @@ arize:
         cert_file = certs_dir / "ca.pem"
         cert_file.write_text("ca cert")
 
-        config_content = """service:
+        config_content = """platform: arize
+
+service:
   name: test-service
 
 arize:
@@ -387,9 +425,10 @@ arize:
         config_path = config_dir / "config.yaml"
         config_path.write_text(config_content)
 
-        from llmops.config import load_config
+        from llmops.sdk.config.load import load_config
 
         config = load_config(config_path)
+        assert config.arize is not None
         assert config.arize.certificate_file == str(cert_file)
 
     def test_absolute_path_not_modified(
@@ -406,7 +445,9 @@ arize:
         cert_file = tmp_path / "ca.pem"
         cert_file.write_text("ca cert")
 
-        config_content = f"""service:
+        config_content = f"""platform: arize
+
+service:
   name: test-service
 
 arize:
@@ -416,9 +457,10 @@ arize:
         config_path = tmp_path / "config.yaml"
         config_path.write_text(config_content)
 
-        from llmops.config import load_config
+        from llmops.sdk.config.load import load_config
 
         config = load_config(config_path)
+        assert config.arize is not None
         assert config.arize.certificate_file == str(cert_file)
 
 
@@ -441,7 +483,9 @@ class TestCertificateValidation:
         WHEN config is loaded
         THEN ConfigurationError is raised
         """
-        config_content = """service:
+        config_content = """platform: arize
+
+service:
   name: test-service
 
 arize:
@@ -454,8 +498,8 @@ validation:
         config_path = tmp_path / "config.yaml"
         config_path.write_text(config_content)
 
-        from llmops.config import load_config
         from llmops.exceptions import ConfigurationError
+        from llmops.sdk.config.load import load_config
 
         with pytest.raises(ConfigurationError) as exc_info:
             load_config(config_path)
@@ -474,7 +518,9 @@ validation:
         WHEN config is loaded
         THEN config loads successfully (validation errors are not raised)
         """
-        config_content = """service:
+        config_content = """platform: arize
+
+service:
   name: test-service
 
 arize:
@@ -487,9 +533,10 @@ validation:
         config_path = tmp_path / "config.yaml"
         config_path.write_text(config_content)
 
-        from llmops.config import load_config
+        from llmops.sdk.config.load import load_config
 
         config = load_config(config_path)
+        assert config.arize is not None
         assert config.arize.certificate_file == "/nonexistent/path/cert.pem"
 
 
@@ -518,7 +565,9 @@ class TestTLSBridgeToEnvVars:
         cert_file = tmp_path / "ca-bundle.pem"
         cert_file.write_text("dummy cert")
 
-        config_content = f"""service:
+        config_content = f"""platform: arize
+
+service:
   name: test-service
 
 arize:
@@ -528,11 +577,12 @@ arize:
         config_path = tmp_path / "config.yaml"
         config_path.write_text(config_content)
 
-        from llmops._internal.telemetry import _bridge_tls_config_to_env
-        from llmops.config import load_config
+        from llmops.exporters.arize.exporter import _bridge_tls_config_to_env
+        from llmops.sdk.config.load import load_config
 
         config = load_config(config_path)
-        _bridge_tls_config_to_env(config)
+        assert config.arize is not None
+        _bridge_tls_config_to_env(config.arize.certificate_file)
 
         import os
 
@@ -557,7 +607,9 @@ arize:
         config_cert = tmp_path / "config-cert.pem"
         config_cert.write_text("config cert")
 
-        config_content = f"""service:
+        config_content = f"""platform: arize
+
+service:
   name: test-service
 
 arize:
@@ -567,11 +619,12 @@ arize:
         config_path = tmp_path / "config.yaml"
         config_path.write_text(config_content)
 
-        from llmops._internal.telemetry import _bridge_tls_config_to_env
-        from llmops.config import load_config
+        from llmops.exporters.arize.exporter import _bridge_tls_config_to_env
+        from llmops.sdk.config.load import load_config
 
         config = load_config(config_path)
-        _bridge_tls_config_to_env(config)
+        assert config.arize is not None
+        _bridge_tls_config_to_env(config.arize.certificate_file)
 
         import os
 
@@ -591,7 +644,9 @@ arize:
         """
         monkeypatch.delenv("OTEL_EXPORTER_OTLP_CERTIFICATE", raising=False)
 
-        config_content = """service:
+        config_content = """platform: arize
+
+service:
   name: test-service
 
 arize:
@@ -600,11 +655,12 @@ arize:
         config_path = tmp_path / "config.yaml"
         config_path.write_text(config_content)
 
-        from llmops._internal.telemetry import _bridge_tls_config_to_env
-        from llmops.config import load_config
+        from llmops.exporters.arize.exporter import _bridge_tls_config_to_env
+        from llmops.sdk.config.load import load_config
 
         config = load_config(config_path)
-        _bridge_tls_config_to_env(config)
+        assert config.arize is not None
+        _bridge_tls_config_to_env(config.arize.certificate_file)
 
         import os
 
@@ -629,7 +685,9 @@ class TestProjectNameHeader:
         WHEN config is loaded
         THEN project_name is available in config
         """
-        config_content = """service:
+        config_content = """platform: arize
+
+service:
   name: test-service
 
 arize:
@@ -639,9 +697,10 @@ arize:
         config_path = tmp_path / "config.yaml"
         config_path.write_text(config_content)
 
-        from llmops.config import load_config
+        from llmops.sdk.config.load import load_config
 
         config = load_config(config_path)
+        assert config.arize is not None
         assert config.arize.project_name == "my-awesome-project"
 
 
@@ -656,18 +715,19 @@ class TestEnvVarOverrides:
         self,
         tmp_path: "Path",
         monkeypatch: pytest.MonkeyPatch,
-        llmops_arize_module: Any,
+        llmops_module: Any,
     ) -> None:
         """
         PRD: PRD_01, Requirement: F10
 
         GIVEN a config file with arize.api_key set to "${ARIZE_API_KEY}"
         AND the ARIZE_API_KEY environment variable is set to "test-api-key"
-        WHEN llmops.arize.instrument() is called
+        WHEN llmops.init() is called
         THEN the API key from the environment is used
         """
         config_path = tmp_path / "llmops.yaml"
         config_path.write_text(
+            "platform: arize\n"
             "service:\n"
             "  name: test-service\n"
             "  version: '1.0.0'\n"
@@ -683,26 +743,27 @@ class TestEnvVarOverrides:
 
         monkeypatch.setenv("ARIZE_API_KEY", "test-api-key-from-env")
 
-        provider = llmops_arize_module.instrument(config_path=config_path)
+        llmops_module.init(config=config_path)
 
-        assert provider is not None
+        assert llmops_module.is_configured()
 
     def test_space_id_can_be_set_via_env_var(
         self,
         tmp_path: "Path",
         monkeypatch: pytest.MonkeyPatch,
-        llmops_arize_module: Any,
+        llmops_module: Any,
     ) -> None:
         """
         PRD: PRD_01, Requirement: F10
 
         GIVEN a config file with arize.space_id set to "${ARIZE_SPACE_ID}"
         AND the ARIZE_SPACE_ID environment variable is set
-        WHEN llmops.arize.instrument() is called
+        WHEN llmops.init() is called
         THEN the space ID from the environment is used
         """
         config_path = tmp_path / "llmops.yaml"
         config_path.write_text(
+            "platform: arize\n"
             "service:\n"
             "  name: test-service\n"
             "  version: '1.0.0'\n"
@@ -718,27 +779,28 @@ class TestEnvVarOverrides:
 
         monkeypatch.setenv("ARIZE_SPACE_ID", "test-space-id-from-env")
 
-        provider = llmops_arize_module.instrument(config_path=config_path)
+        llmops_module.init(config=config_path)
 
-        assert provider is not None
+        assert llmops_module.is_configured()
 
     def test_missing_env_var_in_permissive_mode_does_not_fail(
         self,
         tmp_path: "Path",
         monkeypatch: pytest.MonkeyPatch,
-        llmops_arize_module: Any,
+        llmops_module: Any,
     ) -> None:
         """
         PRD: PRD_01, Requirement: F10
 
         GIVEN a config file referencing an env var that is not set
         AND validation mode is permissive
-        WHEN llmops.arize.instrument() is called
+        WHEN llmops.init() is called
         THEN the SDK initializes without raising an exception
         AND a no-op or degraded mode is used
         """
         config_path = tmp_path / "llmops.yaml"
         config_path.write_text(
+            "platform: arize\n"
             "service:\n"
             "  name: test-service\n"
             "  version: '1.0.0'\n"
@@ -754,26 +816,27 @@ class TestEnvVarOverrides:
 
         monkeypatch.delenv("NONEXISTENT_ENV_VAR", raising=False)
 
-        provider = llmops_arize_module.instrument(config_path=config_path)
+        llmops_module.init(config=config_path)
 
-        assert provider is not None
+        assert llmops_module.is_configured()
 
     def test_missing_env_var_in_strict_mode_raises_error(
         self,
         tmp_path: "Path",
         monkeypatch: pytest.MonkeyPatch,
-        llmops_arize_module: Any,
+        llmops_module: Any,
     ) -> None:
         """
         PRD: PRD_01, Requirement: F10
 
         GIVEN a config file referencing an env var that is not set
         AND validation mode is strict
-        WHEN llmops.arize.instrument() is called
+        WHEN llmops.init() is called
         THEN a ConfigurationError is raised
         """
         config_path = tmp_path / "llmops.yaml"
         config_path.write_text(
+            "platform: arize\n"
             "service:\n"
             "  name: test-service\n"
             "  version: '1.0.0'\n"
@@ -789,5 +852,67 @@ class TestEnvVarOverrides:
 
         monkeypatch.delenv("NONEXISTENT_ENV_VAR", raising=False)
 
-        with pytest.raises(llmops_arize_module.ConfigurationError):
-            llmops_arize_module.instrument(config_path=config_path)
+        with pytest.raises(llmops_module.ConfigurationError):
+            llmops_module.init(config=config_path)
+
+
+@pytest.mark.unit
+class TestPlatformFieldValidation:
+    """Tests for the required platform field.
+
+    This is new behavior from the refactored API.
+    """
+
+    def test_missing_platform_field_raises_error(
+        self,
+        tmp_path: "Path",
+    ) -> None:
+        """
+        GIVEN a config file without a platform field
+        WHEN load_config is called
+        THEN ConfigurationError is raised
+        """
+        config_content = """service:
+  name: test-service
+
+arize:
+  endpoint: https://otlp.arize.com/v1/traces
+"""
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(config_content)
+
+        from llmops.exceptions import ConfigurationError
+        from llmops.sdk.config.load import load_config
+
+        with pytest.raises(ConfigurationError) as exc_info:
+            load_config(config_path)
+
+        assert "platform" in str(exc_info.value)
+
+    def test_invalid_platform_raises_error(
+        self,
+        tmp_path: "Path",
+    ) -> None:
+        """
+        GIVEN a config file with an invalid platform value
+        WHEN load_config is called
+        THEN ConfigurationError is raised
+        """
+        config_content = """platform: invalid_platform
+
+service:
+  name: test-service
+
+arize:
+  endpoint: https://otlp.arize.com/v1/traces
+"""
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(config_content)
+
+        from llmops.exceptions import ConfigurationError
+        from llmops.sdk.config.load import load_config
+
+        with pytest.raises(ConfigurationError) as exc_info:
+            load_config(config_path)
+
+        assert "invalid_platform" in str(exc_info.value)

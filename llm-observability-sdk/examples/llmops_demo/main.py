@@ -1,5 +1,5 @@
 """
-LLMOps Demo - Minimal FastAPI service demonstrating llmops.arize.instrument()
+LLMOps Demo - Minimal FastAPI service demonstrating llmops.init()
 
 This example shows how to use the llmops SDK for auto-instrumentation
 of Google ADK with a simple YAML configuration file.
@@ -56,20 +56,20 @@ async def lifespan(app: FastAPI):
     config_path = Path(__file__).parent / "llmops.yaml"
 
     # Initialize telemetry using the llmops SDK
-    llmops.arize.instrument(config_path=config_path)
+    llmops.init(config=config_path)
 
     print(f"[llmops_demo] Telemetry initialized with config: {config_path}")
 
     yield
 
     # Shutdown and flush traces
-    # tracer_provider.shutdown()
-    # print("[llmops_demo] Telemetry shutdown complete")
+    llmops.shutdown()
+    print("[llmops_demo] Telemetry shutdown complete")
 
 
 app = FastAPI(
     title="LLMOps Demo",
-    description="Minimal example demonstrating llmops.arize.instrument() for auto-instrumentation",
+    description="Minimal example demonstrating llmops.init() for auto-instrumentation",
     version="0.1.0",
     lifespan=lifespan,
 )
@@ -86,7 +86,7 @@ async def root():
     return {
         "service": "LLMOps Demo",
         "version": "0.1.0",
-        "description": "Minimal example using llmops.arize.instrument() for telemetry",
+        "description": "Minimal example using llmops.init() for telemetry",
         "endpoints": {
             "POST /chat": "Chat with the assistant (supports weather and time queries)",
             "GET /health": "Health check",

@@ -1,4 +1,4 @@
-"""Unit tests for lazy-loading platform modules.
+"""Unit tests for SDK import behavior.
 
 Tests derived from PRD_01.
 
@@ -18,8 +18,8 @@ import pytest
 
 
 @pytest.mark.unit
-class TestLazyLoading:
-    """Tests for lazy platform module loading.
+class TestImportBehavior:
+    """Tests for SDK import behavior.
 
     PRD: PRD_01, Requirements: F5, N8
     """
@@ -41,76 +41,119 @@ class TestLazyLoading:
         assert "mlflow" not in sys.modules
         assert isinstance(llmops, ModuleType)
 
-    def test_accessing_platform_attribute_imports_module(self) -> None:
+    def test_sdk_exports_expected_api(self) -> None:
         """
-        PRD: PRD_01, Requirement: F5
-
         GIVEN the SDK is imported
-        WHEN llmops.arize is accessed
-        THEN the arize platform module is loaded
+        WHEN inspecting the module
+        THEN expected public API is available
         """
         import llmops
 
-        arize_module = getattr(llmops, "arize")
-        assert "llmops.arize" in sys.modules
-        assert arize_module is not None
+        # Entry points
+        assert hasattr(llmops, "init")
+        assert hasattr(llmops, "shutdown")
+        assert hasattr(llmops, "is_configured")
+
+        # Config types
+        assert hasattr(llmops, "Config")
+        assert hasattr(llmops, "ServiceConfig")
+        assert hasattr(llmops, "ArizeConfig")
+        assert hasattr(llmops, "MLflowConfig")
+
+        # Exceptions
+        assert hasattr(llmops, "ConfigurationError")
 
 
 @pytest.mark.unit
+@pytest.mark.disable_mock_sdk_telemetry
 class TestDependencyErrors:
     """Tests for helpful ImportError messages when deps are missing.
 
     PRD: PRD_01, Requirements: F11, N7
     """
 
-    def test_missing_arize_deps_raise_helpful_error(
+    def test_missing_arize_deps_raise_helpful_error_in_strict_mode(
         self,
+        tmp_path: "Any",
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """
         PRD: PRD_01, Requirement: F11
 
         GIVEN arize.otel is not installed
-        WHEN llmops.arize.instrument() is called
-        THEN ImportError includes the install hint
+        AND strict validation mode is enabled
+        WHEN llmops.init() is called with arize platform
+        THEN ConfigurationError includes the install hint
         """
-        import builtins
         import llmops
+        from llmops.exporters.arize import exporter as arize_exporter
 
-        original_import = builtins.__import__
+        # Mock check_dependencies to raise ImportError
+        def mock_check_dependencies() -> None:
+            raise ImportError(
+                "Arize exporter requires 'arize-otel' package.\n"
+                "Install with: pip install llmops[arize]"
+            )
 
-        def mock_import(name: str, *args: Any, **kwargs: Any) -> Any:
-            if name == "arize.otel":
-                raise ImportError("No module named arize.otel")
-            return original_import(name, *args, **kwargs)
+        monkeypatch.setattr(
+            arize_exporter, "check_dependencies", mock_check_dependencies
+        )
 
-        monkeypatch.setattr(builtins, "__import__", mock_import)
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(
+            "platform: arize\n"
+            "service:\n"
+            "  name: test-service\n"
+            "arize:\n"
+            "  endpoint: http://localhost/v1/traces\n"
+            "validation:\n"
+            "  mode: strict\n"
+        )
 
-        with pytest.raises(ImportError, match=r"pip install llmops\[arize\]"):
-            getattr(llmops, "arize").instrument()
+        with pytest.raises(
+            llmops.ConfigurationError, match=r"pip install llmops\[arize\]"
+        ):
+            llmops.init(config=config_path)
 
-    def test_missing_mlflow_deps_raise_helpful_error(
+    def test_missing_mlflow_deps_raise_helpful_error_in_strict_mode(
         self,
+        tmp_path: "Any",
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """
         PRD: PRD_01, Requirement: F11
 
         GIVEN mlflow is not installed
-        WHEN llmops.mlflow.instrument() is called
-        THEN ImportError includes the install hint
+        AND strict validation mode is enabled
+        WHEN llmops.init() is called with mlflow platform
+        THEN ConfigurationError includes the install hint
         """
-        import builtins
         import llmops
+        from llmops.exporters.mlflow import exporter as mlflow_exporter
 
-        original_import = builtins.__import__
+        # Mock check_dependencies to raise ImportError
+        def mock_check_dependencies() -> None:
+            raise ImportError(
+                "MLflow exporter requires 'mlflow' package.\n"
+                "Install with: pip install llmops[mlflow]"
+            )
 
-        def mock_import(name: str, *args: Any, **kwargs: Any) -> Any:
-            if name == "mlflow":
-                raise ImportError("No module named mlflow")
-            return original_import(name, *args, **kwargs)
+        monkeypatch.setattr(
+            mlflow_exporter, "check_dependencies", mock_check_dependencies
+        )
 
-        monkeypatch.setattr(builtins, "__import__", mock_import)
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(
+            "platform: mlflow\n"
+            "service:\n"
+            "  name: test-service\n"
+            "mlflow:\n"
+            "  tracking_uri: http://localhost:5001\n"
+            "validation:\n"
+            "  mode: strict\n"
+        )
 
-        with pytest.raises(ImportError, match=r"pip install llmops\[mlflow\]"):
-            getattr(llmops, "mlflow").instrument()
+        with pytest.raises(
+            llmops.ConfigurationError, match=r"pip install llmops\[mlflow\]"
+        ):
+            llmops.init(config=config_path)

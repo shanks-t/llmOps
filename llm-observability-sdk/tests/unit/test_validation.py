@@ -20,40 +20,43 @@ if TYPE_CHECKING:
 
 
 @pytest.mark.unit
-class TestArizePermissiveMode:
+class TestPermissiveMode:
     """Tests for permissive validation mode behavior.
 
     PRD: PRD_01, Requirement: N5
     """
 
-    def test_permissive_mode_returns_noop_on_invalid_config(
+    def test_permissive_mode_succeeds_on_invalid_config(
         self,
         tmp_path: "Path",
-        llmops_arize_module: Any,
+        llmops_module: Any,
     ) -> None:
         """
         PRD: PRD_01, Requirement: N5
 
         GIVEN a config file with validation mode set to "permissive"
-        AND the config file is missing required fields
-        WHEN llmops.arize.instrument() is called with that config
-        THEN a provider is returned (no-op tracer provider)
+        AND the config file is missing required fields (but has platform)
+        WHEN llmops.init() is called with that config
+        THEN the SDK initializes successfully (no-op mode)
         AND no exception is raised
         """
         config_path = tmp_path / "llmops.yaml"
         config_path.write_text(
+            "platform: arize\n"
             "validation:\n"
             "  mode: permissive\n"
-            "# Missing required 'service' and 'arize' sections\n"
+            "# Missing required 'service' section\n"
+            "arize:\n"
+            "  endpoint: http://localhost/v1/traces\n"
         )
 
-        provider = llmops_arize_module.instrument(config_path=config_path)
+        llmops_module.init(config=config_path)
 
-        assert provider is not None
+        assert llmops_module.is_configured()
 
 
 @pytest.mark.unit
-class TestArizeStrictMode:
+class TestStrictMode:
     """Tests for strict validation mode behavior.
 
     PRD: PRD_01, Requirement: N6
@@ -62,29 +65,30 @@ class TestArizeStrictMode:
     def test_strict_mode_raises_error_on_invalid_config(
         self,
         tmp_path: "Path",
-        llmops_arize_module: Any,
+        llmops_module: Any,
     ) -> None:
         """
         PRD: PRD_01, Requirement: N6
 
         GIVEN a config file with validation mode set to "strict"
         AND the config file is missing required fields
-        WHEN llmops.arize.instrument() is called with that config
+        WHEN llmops.init() is called with that config
         THEN a ConfigurationError is raised
         """
         config_path = tmp_path / "llmops.yaml"
         config_path.write_text(
+            "platform: arize\n"
             "validation:\n"
             "  mode: strict\n"
-            "# Missing required 'service' and 'arize' sections\n"
+            "# Missing required 'service' and endpoint\n"
         )
 
-        with pytest.raises(llmops_arize_module.ConfigurationError):
-            llmops_arize_module.instrument(config_path=config_path)
+        with pytest.raises(llmops_module.ConfigurationError):
+            llmops_module.init(config=config_path)
 
 
 @pytest.mark.unit
-class TestArizeTelemetryIsolation:
+class TestTelemetryIsolation:
     """Tests for telemetry isolation from business logic.
 
     PRD: PRD_01, Requirements: N1, N2
@@ -93,7 +97,7 @@ class TestArizeTelemetryIsolation:
     def test_telemetry_failure_never_propagates_to_caller(
         self,
         tmp_path: "Path",
-        llmops_arize_module: Any,
+        llmops_module: Any,
     ) -> None:
         """
         PRD: PRD_01, Requirement: N1, N2
@@ -106,6 +110,7 @@ class TestArizeTelemetryIsolation:
         """
         config_path = tmp_path / "llmops.yaml"
         config_path.write_text(
+            "platform: arize\n"
             "service:\n"
             "  name: test-service\n"
             "arize:\n"
@@ -116,7 +121,7 @@ class TestArizeTelemetryIsolation:
 
         def business_logic() -> str:
             """Business logic that should never fail due to telemetry."""
-            llmops_arize_module.instrument(config_path=config_path)
+            llmops_module.init(config=config_path)
             return "business logic completed"
 
         result = business_logic()
@@ -125,7 +130,7 @@ class TestArizeTelemetryIsolation:
     def test_telemetry_runtime_errors_are_swallowed(
         self,
         valid_arize_config_file: "Path",
-        llmops_arize_module: Any,
+        llmops_module: Any,
     ) -> None:
         """
         PRD: PRD_01, Requirement: N1, N2
@@ -135,7 +140,12 @@ class TestArizeTelemetryIsolation:
         THEN no exceptions propagate to user code
         AND business logic continues uninterrupted
         """
-        provider = llmops_arize_module.instrument(config_path=valid_arize_config_file)
+        from llmops.sdk.lifecycle import get_provider
+
+        llmops_module.init(config=valid_arize_config_file)
+        assert llmops_module.is_configured()
+
+        provider = get_provider()
         assert provider is not None
 
         tracer = provider.get_tracer("test-tracer")

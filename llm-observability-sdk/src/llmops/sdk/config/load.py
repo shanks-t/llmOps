@@ -5,12 +5,19 @@ from __future__ import annotations
 import logging
 import os
 import re
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import yaml
 
+from llmops.api.types import (
+    ArizeConfig,
+    Config,
+    InstrumentationConfig,
+    MLflowConfig,
+    ServiceConfig,
+    ValidationConfig,
+)
 from llmops.exceptions import ConfigurationError
 
 logger = logging.getLogger(__name__)
@@ -18,81 +25,8 @@ logger = logging.getLogger(__name__)
 # Pattern for environment variable substitution: ${VAR_NAME}
 ENV_VAR_PATTERN = re.compile(r"\$\{([^}]+)\}")
 
-
-@dataclass
-class ServiceConfig:
-    """Service identification configuration."""
-
-    name: str
-    version: str | None = None
-
-
-@dataclass
-class ArizeConfig:
-    """Arize telemetry configuration.
-
-    These fields map directly to arize.otel.register() parameters.
-    """
-
-    endpoint: str
-    project_name: str | None = None
-    api_key: str | None = None
-    space_id: str | None = None
-    # TLS certificate for server verification (.pem)
-    # Can be relative path (resolved from config file) or absolute path
-    # Fallback: OTEL_EXPORTER_OTLP_CERTIFICATE env var
-    certificate_file: str | None = None
-    # Transport protocol: "http" (default) or "grpc"
-    transport: str = "http"
-    # Span processor: True for BatchSpanProcessor (default), False for SimpleSpanProcessor
-    batch: bool = True
-    # Log spans to console (useful during development)
-    log_to_console: bool = False
-    # Print configuration details to stdout
-    verbose: bool = False
-
-
-@dataclass
-class InstrumentationConfig:
-    """Auto-instrumentation configuration."""
-
-    google_adk: bool = True
-    google_genai: bool = True
-    # Extra keys are stored here for forward compatibility
-    extra: dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class MLflowConfig:
-    """MLflow telemetry configuration (skeleton)."""
-
-    tracking_uri: str
-    experiment_name: str | None = None
-
-
-@dataclass
-class ValidationConfig:
-    """Validation mode configuration."""
-
-    mode: str = "permissive"  # "strict" or "permissive"
-
-
-@dataclass
-class LLMOpsConfig:
-    """Complete SDK configuration."""
-
-    service: ServiceConfig
-    arize: ArizeConfig
-    mlflow: MLflowConfig
-    instrumentation: InstrumentationConfig = field(
-        default_factory=InstrumentationConfig
-    )
-    validation: ValidationConfig = field(default_factory=ValidationConfig)
-
-    @property
-    def is_strict(self) -> bool:
-        """Return True if validation mode is strict."""
-        return self.validation.mode == "strict"
+# Valid platform values
+VALID_PLATFORMS = {"arize", "mlflow"}
 
 
 def _substitute_env_vars(value: str, strict: bool) -> str:
@@ -232,7 +166,7 @@ def _parse_validation_config(data: dict[str, Any]) -> ValidationConfig:
     return ValidationConfig(mode=mode)
 
 
-def _validate_config(config: LLMOpsConfig) -> list[str]:
+def _validate_config(config: Config) -> list[str]:
     """Validate configuration and return list of error messages.
 
     Args:
@@ -246,10 +180,16 @@ def _validate_config(config: LLMOpsConfig) -> list[str]:
     if not config.service.name:
         errors.append("service.name is required")
 
-    if not config.arize.endpoint and not config.mlflow.tracking_uri:
-        errors.append("arize.endpoint or mlflow.tracking_uri is required")
+    # Validate platform-specific config exists
+    if config.platform == "arize":
+        if config.arize is None or not config.arize.endpoint:
+            errors.append("arize.endpoint is required when platform is 'arize'")
+    elif config.platform == "mlflow":
+        if config.mlflow is None or not config.mlflow.tracking_uri:
+            errors.append("mlflow.tracking_uri is required when platform is 'mlflow'")
 
-    if config.arize.certificate_file:
+    # Validate certificate file exists if specified
+    if config.arize and config.arize.certificate_file:
         cert_path = Path(config.arize.certificate_file)
         if not cert_path.exists():
             errors.append(
@@ -259,7 +199,7 @@ def _validate_config(config: LLMOpsConfig) -> list[str]:
     return errors
 
 
-def load_config(path: Path, strict: bool | None = None) -> LLMOpsConfig:
+def load_config(path: str | Path, strict: bool | None = None) -> Config:
     """Load and parse configuration from a YAML file.
 
     Args:
@@ -267,12 +207,13 @@ def load_config(path: Path, strict: bool | None = None) -> LLMOpsConfig:
         strict: Override validation mode. If None, use mode from config file.
 
     Returns:
-        Parsed and validated LLMOpsConfig.
+        Parsed and validated Config.
 
     Raises:
         ConfigurationError: If file doesn't exist, YAML is invalid,
                            or validation fails in strict mode.
     """
+    path = Path(path)
     if not path.exists():
         raise ConfigurationError(f"Configuration file not found: {path}")
 
@@ -296,13 +237,35 @@ def load_config(path: Path, strict: bool | None = None) -> LLMOpsConfig:
         # Re-raise env var errors in strict mode
         raise
 
+    # Parse platform field (required)
+    platform = data.get("platform")
+    if platform is None:
+        raise ConfigurationError(
+            "Config must specify 'platform' field. Valid values: arize, mlflow"
+        )
+    if platform not in VALID_PLATFORMS:
+        raise ConfigurationError(
+            f"Unknown platform: '{platform}'. Valid values: {', '.join(sorted(VALID_PLATFORMS))}"
+        )
+
     # Parse configuration sections
     # Pass config file directory for resolving relative paths
     config_dir = path.parent
-    config = LLMOpsConfig(
+
+    # Parse platform-specific config
+    arize_config = None
+    mlflow_config = None
+
+    if "arize" in data:
+        arize_config = _parse_arize_config(data["arize"], config_dir=config_dir)
+    if "mlflow" in data:
+        mlflow_config = _parse_mlflow_config(data["mlflow"])
+
+    config = Config(
+        platform=platform,
         service=_parse_service_config(data.get("service", {})),
-        arize=_parse_arize_config(data.get("arize", {}), config_dir=config_dir),
-        mlflow=_parse_mlflow_config(data.get("mlflow", {})),
+        arize=arize_config,
+        mlflow=mlflow_config,
         instrumentation=_parse_instrumentation_config(data.get("instrumentation", {})),
         validation=_parse_validation_config(data.get("validation", {})),
     )

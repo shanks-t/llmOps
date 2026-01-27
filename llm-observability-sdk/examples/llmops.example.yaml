@@ -8,6 +8,12 @@
 # become empty strings with a warning.
 
 # -----------------------------------------------------------------------------
+# Platform Selection (required)
+# -----------------------------------------------------------------------------
+# Specify which observability backend to use: "arize" or "mlflow"
+platform: arize
+
+# -----------------------------------------------------------------------------
 # Service Configuration (required)
 # -----------------------------------------------------------------------------
 service:

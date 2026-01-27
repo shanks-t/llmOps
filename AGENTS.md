@@ -7,41 +7,6 @@
 ```bash
 just
 ```
-
-This runs all checks: Ruff (lint), MyPy (types), Bandit (security), and Pytest (tests).
-
-**All checks must pass.** Do not skip or ignore failures.
-
-| Command | Description |
-|---------|-------------|
-| `just` | Run all checks and tests (default) |
-| `just lint` | Ruff linter only |
-| `just typecheck` | MyPy type checker only |
-| `just security` | Bandit security scanner only |
-| `just test` | Pytest test suite only |
-| `just lint-fix` | Auto-fix linting issues |
-| `just format` | Auto-format code with Ruff |
-
----
-
-## Project Context
-
-This is a **proof of concept (POC)** to validate architecture, APIs, and developer experience—not a production-hardened system.
-
----
-
-## Project Structure
-
-| Path | Purpose |
-|------|---------|
-| `./docs/` | PRD, architecture, and API design documents |
-| `./llm-observability-sdk/src/` | Implementation code |
-| `./llm-observability-sdk/tests/` | Tests |
-| `./llm-observability-sdk/examples/` | Usage examples |
-| `INFRA.md` | Infrastructure details |
-
----
-
 ## Source of Truth
 
 The **PRD** (in `./docs/`) is authoritative. All implementations must trace back to it.

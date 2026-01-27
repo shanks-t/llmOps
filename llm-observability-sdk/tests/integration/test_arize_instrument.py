@@ -1,14 +1,14 @@
-"""Integration tests for Arize SDK instrumentation.
+"""Integration tests for SDK initialization.
 
 Tests derived from PRD_01.
 
 Requirements covered:
-- F1: llmops.arize.instrument(config_path) exists
-- F2: llmops.arize.instrument() initializes Arize telemetry and returns a tracer provider
-- F6: instrument() requires an explicit config path (arg or env var)
-- F7: instrument() accepts llmops.yaml (preferred) and llmops.yml (supported)
+- F1: llmops.init(config) initializes the SDK
+- F2: llmops.init() initializes telemetry
+- F6: init() requires an explicit config path (arg or env var)
+- F7: init() accepts llmops.yaml (preferred) and llmops.yml (supported)
 - N4: All setup completes in a single synchronous call
-- Lifecycle: instrument() registers atexit handler for automatic span flushing
+- Lifecycle: init() registers atexit handler for automatic span flushing
 """
 
 from __future__ import annotations
@@ -22,56 +22,56 @@ if TYPE_CHECKING:
 
 
 @pytest.mark.integration
-class TestArizeConfigResolution:
-    """Tests for Arize config path resolution behavior.
+class TestConfigResolution:
+    """Tests for config path resolution behavior.
 
     PRD: PRD_01, Requirements: F1, F6
     """
 
-    def test_instrument_fails_without_config_in_strict_mode(
+    def test_init_fails_without_config(
         self,
         monkeypatch: pytest.MonkeyPatch,
-        llmops_arize_module: Any,
+        llmops_module: Any,
     ) -> None:
         """
         PRD: PRD_01, Requirement: F6
 
         GIVEN the LLMOPS_CONFIG_PATH environment variable is not set
-        AND no config path is provided to instrument()
-        WHEN llmops.arize.instrument() is called
+        AND no config path is provided to init()
+        WHEN llmops.init() is called
         THEN a ConfigurationError is raised
         """
         monkeypatch.delenv("LLMOPS_CONFIG_PATH", raising=False)
 
-        with pytest.raises(llmops_arize_module.ConfigurationError):
-            llmops_arize_module.instrument()
+        with pytest.raises(llmops_module.ConfigurationError):
+            llmops_module.init()
 
-    def test_instrument_resolves_config_from_env_var(
+    def test_init_resolves_config_from_env_var(
         self,
         monkeypatch: pytest.MonkeyPatch,
         valid_arize_config_file: "Path",
-        llmops_arize_module: Any,
+        llmops_module: Any,
     ) -> None:
         """
         PRD: PRD_01, Requirement: F1, F2
 
         GIVEN a valid config file exists
         AND the LLMOPS_CONFIG_PATH environment variable is set to that path
-        WHEN llmops.arize.instrument() is called without arguments
-        THEN a TracerProvider is returned
+        WHEN llmops.init() is called without arguments
+        THEN the SDK initializes successfully
         """
         monkeypatch.setenv("LLMOPS_CONFIG_PATH", str(valid_arize_config_file))
 
-        provider = llmops_arize_module.instrument()
+        llmops_module.init()
 
-        assert provider is not None
+        assert llmops_module.is_configured()
 
-    def test_instrument_explicit_path_takes_precedence_over_env(
+    def test_init_explicit_path_takes_precedence_over_env(
         self,
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: "Path",
         valid_arize_config_content: str,
-        llmops_arize_module: Any,
+        llmops_module: Any,
     ) -> None:
         """
         PRD: PRD_01, Requirement: F6
@@ -79,8 +79,8 @@ class TestArizeConfigResolution:
         GIVEN a valid config file exists at "env.yaml"
         AND a valid config file exists at "arg.yaml"
         AND the LLMOPS_CONFIG_PATH environment variable is set to "env.yaml"
-        WHEN llmops.arize.instrument() is called with config_path set to "arg.yaml"
-        THEN a TracerProvider is returned
+        WHEN llmops.init() is called with config set to "arg.yaml"
+        THEN the SDK initializes successfully
         AND the config from "arg.yaml" is used (not "env.yaml")
         """
         env_config = tmp_path / "env.yaml"
@@ -94,8 +94,14 @@ class TestArizeConfigResolution:
 
         monkeypatch.setenv("LLMOPS_CONFIG_PATH", str(env_config))
 
-        provider = llmops_arize_module.instrument(config_path=arg_config)
+        llmops_module.init(config=arg_config)
 
+        assert llmops_module.is_configured()
+
+        # Verify the correct config was used by checking service name
+        from llmops.sdk.lifecycle import get_provider
+
+        provider = get_provider()
         assert provider is not None
         resource = provider.resource
         service_name = resource.attributes.get("service.name")
@@ -106,75 +112,75 @@ class TestArizeConfigResolution:
 
 
 @pytest.mark.integration
-class TestArizeFileExtensions:
+class TestFileExtensions:
     """Tests for config file extension handling.
 
     PRD: PRD_01, Requirement: F7
     """
 
-    def test_instrument_accepts_yaml_extension(
+    def test_init_accepts_yaml_extension(
         self,
         tmp_path: "Path",
         valid_arize_config_content: str,
-        llmops_arize_module: Any,
+        llmops_module: Any,
     ) -> None:
         """
         PRD: PRD_01, Requirement: F7
 
         GIVEN a valid config file exists with .yaml extension
-        WHEN llmops.arize.instrument() is called with that config path
-        THEN a TracerProvider is returned
+        WHEN llmops.init() is called with that config path
+        THEN the SDK initializes successfully
         """
         config_path = tmp_path / "config.yaml"
         config_path.write_text(valid_arize_config_content)
 
-        provider = llmops_arize_module.instrument(config_path=config_path)
+        llmops_module.init(config=config_path)
 
-        assert provider is not None
+        assert llmops_module.is_configured()
 
-    def test_instrument_accepts_yml_extension(
+    def test_init_accepts_yml_extension(
         self,
         tmp_path: "Path",
         valid_arize_config_content: str,
-        llmops_arize_module: Any,
+        llmops_module: Any,
     ) -> None:
         """
         PRD: PRD_01, Requirement: F7
 
         GIVEN a valid config file exists with .yml extension
-        WHEN llmops.arize.instrument() is called with that config path
-        THEN a TracerProvider is returned
+        WHEN llmops.init() is called with that config path
+        THEN the SDK initializes successfully
         """
         config_path = tmp_path / "config.yml"
         config_path.write_text(valid_arize_config_content)
 
-        provider = llmops_arize_module.instrument(config_path=config_path)
+        llmops_module.init(config=config_path)
 
-        assert provider is not None
+        assert llmops_module.is_configured()
 
 
 @pytest.mark.integration
-class TestArizeLifecycle:
+class TestLifecycle:
     """Tests for automatic lifecycle management.
 
     PRD: PRD_01, Requirement: N4
     """
 
-    def test_instrument_registers_atexit_handler(
+    def test_init_registers_atexit_handler(
         self,
         valid_arize_config_file: "Path",
-        llmops_arize_module: Any,
+        llmops_module: Any,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """
         PRD: PRD_01, Requirement: N4
 
         GIVEN a valid config file exists
-        WHEN llmops.arize.instrument() is called
+        WHEN llmops.init() is called
         THEN an atexit handler is registered to shutdown the provider
 
         This ensures spans are flushed on process exit even if the caller
-        doesn't explicitly call provider.shutdown().
+        doesn't explicitly call shutdown().
         """
         import atexit
 
@@ -185,15 +191,71 @@ class TestArizeLifecycle:
             registered_funcs.append(func)
             return original_register(func, *args, **kwargs)
 
-        import llmops._platforms._instrument as instrument_module
+        import llmops.api._init as init_module
 
-        monkeypatch.setattr(instrument_module.atexit, "register", mock_register)
+        monkeypatch.setattr(init_module.atexit, "register", mock_register)
 
-        provider = llmops_arize_module.instrument(config_path=valid_arize_config_file)
+        llmops_module.init(config=valid_arize_config_file)
 
         assert len(registered_funcs) >= 1, (
             "Expected at least one atexit handler to be registered"
         )
-        assert provider.shutdown in registered_funcs, (
-            "atexit handler should include provider.shutdown"
+
+    def test_shutdown_resets_configured_state(
+        self,
+        valid_arize_config_file: "Path",
+        llmops_module: Any,
+    ) -> None:
+        """
+        GIVEN the SDK has been initialized
+        WHEN shutdown() is called
+        THEN is_configured() returns False
+        """
+        llmops_module.init(config=valid_arize_config_file)
+        assert llmops_module.is_configured()
+
+        llmops_module.shutdown()
+        assert not llmops_module.is_configured()
+
+    def test_shutdown_is_idempotent(
+        self,
+        valid_arize_config_file: "Path",
+        llmops_module: Any,
+    ) -> None:
+        """
+        GIVEN the SDK has been initialized
+        WHEN shutdown() is called multiple times
+        THEN no error is raised
+        """
+        llmops_module.init(config=valid_arize_config_file)
+
+        # Multiple shutdowns should not raise
+        llmops_module.shutdown()
+        llmops_module.shutdown()
+        llmops_module.shutdown()
+
+        assert not llmops_module.is_configured()
+
+
+@pytest.mark.integration
+class TestProgrammaticConfig:
+    """Tests for programmatic configuration via Config object."""
+
+    def test_init_accepts_config_object(
+        self,
+        llmops_module: Any,
+    ) -> None:
+        """
+        GIVEN a Config object is created programmatically
+        WHEN llmops.init() is called with that Config
+        THEN the SDK initializes successfully
+        """
+        config = llmops_module.Config(
+            platform="arize",
+            service=llmops_module.ServiceConfig(name="programmatic-service"),
+            arize=llmops_module.ArizeConfig(endpoint="http://localhost:6006/v1/traces"),
         )
+
+        llmops_module.init(config=config)
+
+        assert llmops_module.is_configured()

@@ -3,9 +3,9 @@
 Tests derived from PRD_01.
 
 Requirements covered:
-- F3: llmops.arize.instrument() auto-instruments Google ADK
-- F4: llmops.arize.instrument() auto-instruments Google GenAI
-- F8: Each platform module defines its supported instrumentors
+- F3: llmops.init() auto-instruments Google ADK
+- F4: llmops.init() auto-instruments Google GenAI
+- F8: Instrumentation can be enabled/disabled via config
 """
 
 from __future__ import annotations
@@ -25,37 +25,39 @@ class TestGoogleADKInstrumentation:
     PRD: PRD_01, Requirement: F3
     """
 
-    def test_instrument_enables_google_adk_instrumentation(
+    def test_init_enables_google_adk_instrumentation(
         self,
         valid_arize_config_file: "Path",
-        llmops_arize_module: Any,
+        llmops_module: Any,
     ) -> None:
         """
         PRD: PRD_01, Requirement: F3
 
         GIVEN a valid config file with google_adk instrumentation enabled
-        WHEN llmops.arize.instrument() is called
-        THEN Google ADK is auto-instrumented
-        AND no additional code is required to trace ADK calls
+        WHEN llmops.init() is called
+        THEN the SDK initializes successfully
+        AND Google ADK instrumentation is applied
         """
-        provider = llmops_arize_module.instrument(config_path=valid_arize_config_file)
+        llmops_module.init(config=valid_arize_config_file)
 
-        assert provider is not None
+        assert llmops_module.is_configured()
 
-    def test_instrument_respects_google_adk_disabled_config(
+    def test_init_respects_google_adk_disabled_config(
         self,
         tmp_path: "Path",
-        llmops_arize_module: Any,
+        llmops_module: Any,
     ) -> None:
         """
         PRD: PRD_01, Requirement: F3, F8
 
         GIVEN a config file with google_adk instrumentation set to false
-        WHEN llmops.arize.instrument() is called
-        THEN Google ADK is NOT auto-instrumented
+        WHEN llmops.init() is called
+        THEN the SDK initializes successfully
+        AND Google ADK is NOT auto-instrumented
         """
         config_path = tmp_path / "llmops.yaml"
         config_path.write_text(
+            "platform: arize\n"
             "service:\n"
             "  name: test-service\n"
             "  version: '1.0.0'\n"
@@ -68,9 +70,9 @@ class TestGoogleADKInstrumentation:
             "  mode: permissive\n"
         )
 
-        provider = llmops_arize_module.instrument(config_path=config_path)
+        llmops_module.init(config=config_path)
 
-        assert provider is not None
+        assert llmops_module.is_configured()
 
 
 @pytest.mark.integration
@@ -80,37 +82,39 @@ class TestGoogleGenAIInstrumentation:
     PRD: PRD_01, Requirement: F4
     """
 
-    def test_instrument_enables_google_genai_instrumentation(
+    def test_init_enables_google_genai_instrumentation(
         self,
         valid_arize_config_file: "Path",
-        llmops_arize_module: Any,
+        llmops_module: Any,
     ) -> None:
         """
         PRD: PRD_01, Requirement: F4
 
         GIVEN a valid config file with google_genai instrumentation enabled
-        WHEN llmops.arize.instrument() is called
-        THEN Google GenAI is auto-instrumented
-        AND no additional code is required to trace GenAI calls
+        WHEN llmops.init() is called
+        THEN the SDK initializes successfully
+        AND Google GenAI instrumentation is applied
         """
-        provider = llmops_arize_module.instrument(config_path=valid_arize_config_file)
+        llmops_module.init(config=valid_arize_config_file)
 
-        assert provider is not None
+        assert llmops_module.is_configured()
 
-    def test_instrument_respects_google_genai_disabled_config(
+    def test_init_respects_google_genai_disabled_config(
         self,
         tmp_path: "Path",
-        llmops_arize_module: Any,
+        llmops_module: Any,
     ) -> None:
         """
         PRD: PRD_01, Requirement: F4, F8
 
         GIVEN a config file with google_genai instrumentation set to false
-        WHEN llmops.arize.instrument() is called
-        THEN Google GenAI is NOT auto-instrumented
+        WHEN llmops.init() is called
+        THEN the SDK initializes successfully
+        AND Google GenAI is NOT auto-instrumented
         """
         config_path = tmp_path / "llmops.yaml"
         config_path.write_text(
+            "platform: arize\n"
             "service:\n"
             "  name: test-service\n"
             "  version: '1.0.0'\n"
@@ -123,9 +127,9 @@ class TestGoogleGenAIInstrumentation:
             "  mode: permissive\n"
         )
 
-        provider = llmops_arize_module.instrument(config_path=config_path)
+        llmops_module.init(config=config_path)
 
-        assert provider is not None
+        assert llmops_module.is_configured()
 
 
 @pytest.mark.integration
@@ -135,22 +139,23 @@ class TestInstrumentationExtensibility:
     PRD: PRD_01, Requirement: F8
     """
 
-    def test_instrument_handles_unknown_instrumentor_gracefully(
+    def test_init_handles_unknown_instrumentor_gracefully(
         self,
         tmp_path: "Path",
-        llmops_arize_module: Any,
+        llmops_module: Any,
     ) -> None:
         """
         PRD: PRD_01, Requirement: F8
 
         GIVEN a config file with an unknown instrumentor specified
-        WHEN llmops.arize.instrument() is called in permissive mode
+        WHEN llmops.init() is called in permissive mode
         THEN the SDK initializes successfully
         AND a warning is logged for the unknown instrumentor
         AND known instrumentors are still applied
         """
         config_path = tmp_path / "llmops.yaml"
         config_path.write_text(
+            "platform: arize\n"
             "service:\n"
             "  name: test-service\n"
             "  version: '1.0.0'\n"
@@ -164,6 +169,6 @@ class TestInstrumentationExtensibility:
             "  mode: permissive\n"
         )
 
-        provider = llmops_arize_module.instrument(config_path=config_path)
+        llmops_module.init(config=config_path)
 
-        assert provider is not None
+        assert llmops_module.is_configured()

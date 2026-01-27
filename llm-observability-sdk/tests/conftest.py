@@ -11,10 +11,8 @@ Following OpenTelemetry Python SDK testing patterns.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Generator
-
 import sys
-from types import ModuleType
+from typing import TYPE_CHECKING, Any, Generator
 
 import pytest
 from opentelemetry import trace as trace_api
@@ -27,7 +25,8 @@ from tests.fakes import FakeArizeOtel, Transport
 
 if TYPE_CHECKING:
     from pathlib import Path
-    from llmops.config import LLMOpsConfig
+
+    from llmops.api.types import Config
 
 
 def _reset_trace_globals() -> None:
@@ -53,6 +52,17 @@ def _reset_trace_globals() -> None:
     trace_api._PROXY_TRACER_PROVIDER = trace_api.ProxyTracerProvider()
 
 
+def _reset_sdk_state() -> None:
+    """Reset the LLMOPS SDK state for test isolation."""
+    try:
+        from llmops.sdk import lifecycle
+
+        lifecycle._configured = False
+        lifecycle._provider = None
+    except ImportError:
+        pass
+
+
 @pytest.fixture
 def in_memory_exporter() -> InMemorySpanExporter:
     """Provide an InMemorySpanExporter for capturing spans in tests."""
@@ -68,7 +78,7 @@ def test_tracer_provider(in_memory_exporter: InMemorySpanExporter) -> TracerProv
 
 
 def _create_test_tracer_provider(
-    config: "LLMOpsConfig",
+    config: "Config",
     in_memory_exporter: InMemorySpanExporter,
 ) -> TracerProvider:
     """Create a TracerProvider for tests that mimics production behavior."""
@@ -89,8 +99,10 @@ def _create_test_tracer_provider(
 def reset_otel_state() -> Generator[None, None, None]:
     """Reset OpenTelemetry global state before and after each test."""
     _reset_trace_globals()
+    _reset_sdk_state()
     yield
     _reset_trace_globals()
+    _reset_sdk_state()
 
 
 @pytest.fixture(autouse=True)
@@ -114,38 +126,37 @@ def mock_sdk_telemetry(
         yield in_memory_exporter
         return
 
-    import sys
-
-    def mock_create_tracer_provider(config: "LLMOpsConfig") -> TracerProvider:
+    def mock_create_arize_provider(config: "Config") -> TracerProvider:
         return _create_test_tracer_provider(config, in_memory_exporter)
 
-    import llmops  # noqa: F401 - ensures module is loaded
-    import llmops._internal.telemetry as telemetry_module
-    from llmops.config import ArizeConfig, LLMOpsConfig, MLflowConfig, ServiceConfig
+    def mock_create_mlflow_provider(config: "Config") -> TracerProvider:
+        return _create_test_tracer_provider(config, in_memory_exporter)
 
-    module_names = [
-        "llmops._internal.telemetry",
-        "llmops._platforms.arize",
+    # Patch the exporter factories
+    module_patches = [
+        (
+            "llmops.exporters.arize.exporter",
+            "create_arize_provider",
+            mock_create_arize_provider,
+        ),
+        (
+            "llmops.exporters.mlflow.exporter",
+            "create_mlflow_provider",
+            mock_create_mlflow_provider,
+        ),
     ]
-    for module_name in module_names:
+
+    for module_name, func_name, mock_func in module_patches:
         module = sys.modules.get(module_name)
         if module is None:
-            continue
-        if hasattr(module, "create_tracer_provider"):
-            monkeypatch.setattr(
-                module, "create_tracer_provider", mock_create_tracer_provider
-            )
+            try:
+                import importlib
 
-    noop_config = LLMOpsConfig(
-        service=ServiceConfig(name="llmops-noop"),
-        arize=ArizeConfig(endpoint=""),
-        mlflow=MLflowConfig(tracking_uri=""),
-    )
-    monkeypatch.setattr(
-        telemetry_module,
-        "create_noop_tracer_provider",
-        lambda: _create_test_tracer_provider(noop_config, in_memory_exporter),
-    )
+                module = importlib.import_module(module_name)
+            except ImportError:
+                continue
+        if hasattr(module, func_name):
+            monkeypatch.setattr(module, func_name, mock_func)
 
     yield in_memory_exporter
 
@@ -155,7 +166,9 @@ def mock_sdk_telemetry(
 @pytest.fixture
 def valid_arize_config_content() -> str:
     """Return valid Arize YAML config content for tests."""
-    return """service:
+    return """platform: arize
+
+service:
   name: test-service
   version: "1.0.0"
 
@@ -193,7 +206,9 @@ def valid_arize_config_with_mlflow_content(valid_arize_config_content: str) -> s
 @pytest.fixture
 def valid_mlflow_config_content() -> str:
     """Return valid MLflow YAML config content for tests."""
-    return """service:
+    return """platform: mlflow
+
+service:
   name: test-service
   version: "1.0.0"
 
@@ -233,20 +248,6 @@ def llmops_module() -> Any:
 
 
 @pytest.fixture
-def llmops_arize_module(llmops_module: Any) -> Any:
-    """Return the llmops.arize module."""
-    return getattr(llmops_module, "arize")
-
-
-@pytest.fixture
-def llmops_mlflow_module(llmops_module: Any) -> Any:
-    """Return the llmops.mlflow module."""
-    if "mlflow" not in sys.modules:
-        sys.modules["mlflow"] = ModuleType("mlflow")
-    return getattr(llmops_module, "mlflow")
-
-
-@pytest.fixture
 def fake_arize_otel(in_memory_exporter: InMemorySpanExporter) -> FakeArizeOtel:
     """Provide a FakeArizeOtel instance for testing arize.otel interactions.
 
@@ -271,14 +272,14 @@ def patched_arize_otel(
     """Patch arize.otel in sys.modules with FakeArizeOtel.
 
     This fixture patches sys.modules so that `from arize.otel import register`
-    uses the fake. Since create_tracer_provider imports arize.otel at call time
+    uses the fake. Since create_arize_provider imports arize.otel at call time
     (not module load time), no reload is necessary.
 
     Usage:
         @pytest.mark.disable_mock_sdk_telemetry
         def test_something(patched_arize_otel, tmp_path):
             # Create config and call code that imports arize.otel
-            provider = create_tracer_provider(config)
+            llmops.init(config=config_path)
             patched_arize_otel.assert_registered_with(space_id="test")
     """
 

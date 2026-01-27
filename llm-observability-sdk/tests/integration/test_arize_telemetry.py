@@ -19,6 +19,7 @@ from tests.fakes import Transport
 
 if TYPE_CHECKING:
     from pathlib import Path
+
     from tests.fakes import FakeArizeOtel
 
 
@@ -27,13 +28,13 @@ if TYPE_CHECKING:
 class TestArizeOtelMode:
     """Tests for arize.otel.register integration.
 
-    These tests verify that create_tracer_provider correctly passes
+    These tests verify that create_arize_provider correctly passes
     config values to arize.otel.register() parameters using FakeArizeOtel.
 
     PRD: PRD_01
     """
 
-    def test_create_tracer_provider_passes_config_to_register(
+    def test_create_arize_provider_passes_config_to_register(
         self,
         tmp_path: "Path",
         patched_arize_otel: "FakeArizeOtel",
@@ -42,10 +43,12 @@ class TestArizeOtelMode:
         PRD: PRD_01
 
         GIVEN a valid config with arize credentials
-        WHEN create_tracer_provider is called
+        WHEN create_arize_provider is called
         THEN arize.otel.register receives the config values
         """
-        config_content = """service:
+        config_content = """platform: arize
+
+service:
   name: test-service
 
 arize:
@@ -57,11 +60,11 @@ arize:
         config_path = tmp_path / "config.yaml"
         config_path.write_text(config_content)
 
-        from llmops.config import load_config
-        import llmops._internal.telemetry as telemetry_module
+        from llmops.exporters.arize.exporter import create_arize_provider
+        from llmops.sdk.config.load import load_config
 
         config = load_config(config_path)
-        provider = telemetry_module.create_tracer_provider(config)
+        provider = create_arize_provider(config)
 
         # Verify config values are passed to arize.otel.register
         patched_arize_otel.assert_registered_once()
@@ -84,10 +87,12 @@ arize:
         PRD: PRD_01
 
         GIVEN transport, batch, log_to_console, and verbose are specified in config
-        WHEN create_tracer_provider is called
+        WHEN create_arize_provider is called
         THEN arize.otel.register receives these options
         """
-        config_content = """service:
+        config_content = """platform: arize
+
+service:
   name: test-service
 
 arize:
@@ -102,11 +107,11 @@ arize:
         config_path = tmp_path / "config.yaml"
         config_path.write_text(config_content)
 
-        from llmops.config import load_config
-        import llmops._internal.telemetry as telemetry_module
+        from llmops.exporters.arize.exporter import create_arize_provider
+        from llmops.sdk.config.load import load_config
 
         config = load_config(config_path)
-        telemetry_module.create_tracer_provider(config)
+        create_arize_provider(config)
 
         # Verify config values are passed to arize.otel.register
         patched_arize_otel.assert_registered_once()
@@ -117,7 +122,7 @@ arize:
             verbose=True,
         )
 
-    def test_create_tracer_provider_calls_tls_bridge(
+    def test_create_arize_provider_calls_tls_bridge(
         self,
         tmp_path: "Path",
         monkeypatch: pytest.MonkeyPatch,
@@ -127,7 +132,7 @@ arize:
         PRD: PRD_01
 
         GIVEN certificate_file is specified in config
-        WHEN create_tracer_provider is called
+        WHEN create_arize_provider is called
         THEN _bridge_tls_config_to_env is called (env var is set)
 
         Note: This tests the side effect of TLS config bridging to env vars,
@@ -138,7 +143,9 @@ arize:
         cert_file = tmp_path / "ca-bundle.pem"
         cert_file.write_text("dummy cert")
 
-        config_content = f"""service:
+        config_content = f"""platform: arize
+
+service:
   name: test-service
 
 arize:
@@ -150,13 +157,46 @@ arize:
         config_path = tmp_path / "config.yaml"
         config_path.write_text(config_content)
 
-        from llmops.config import load_config
-        import llmops._internal.telemetry as telemetry_module
+        from llmops.exporters.arize.exporter import create_arize_provider
+        from llmops.sdk.config.load import load_config
 
         config = load_config(config_path)
-        telemetry_module.create_tracer_provider(config)
+        create_arize_provider(config)
 
         # Verify the observable behavior: env var is set
         import os
 
         assert os.environ.get("OTEL_EXPORTER_OTLP_CERTIFICATE") == str(cert_file)
+
+    def test_project_name_defaults_to_service_name(
+        self,
+        tmp_path: "Path",
+        patched_arize_otel: "FakeArizeOtel",
+    ) -> None:
+        """
+        GIVEN project_name is NOT specified in config
+        WHEN create_arize_provider is called
+        THEN project_name defaults to service.name
+        """
+        config_content = """platform: arize
+
+service:
+  name: my-service-name
+
+arize:
+  endpoint: https://otlp.arize.com/v1/traces
+  space_id: test-space
+  api_key: test-key
+"""
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(config_content)
+
+        from llmops.exporters.arize.exporter import create_arize_provider
+        from llmops.sdk.config.load import load_config
+
+        config = load_config(config_path)
+        create_arize_provider(config)
+
+        patched_arize_otel.assert_registered_with(
+            project_name="my-service-name",
+        )

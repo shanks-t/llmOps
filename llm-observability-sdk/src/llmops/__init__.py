@@ -1,33 +1,45 @@
-"""LLM Observability SDK — Platform-explicit auto-instrumentation.
+"""LLMOPS SDK - LLM Observability for Python.
 
-This SDK provides platform namespaces for explicit backend selection:
+This SDK provides a single entry point for LLM observability:
 
     import llmops
-    llmops.arize.instrument(config_path="/path/to/llmops.yaml")
-    llmops.mlflow.instrument(config_path="/path/to/llmops.yaml")
+    llmops.init(config="llmops.yaml")
+
+Configuration drives platform selection - specify `platform: arize` or
+`platform: mlflow` in your YAML config file.
 """
 
 from __future__ import annotations
 
+from llmops.api import (
+    ArizeConfig,
+    Config,
+    InstrumentationConfig,
+    MLflowConfig,
+    ServiceConfig,
+    ValidationConfig,
+    init,
+    is_configured,
+    shutdown,
+)
 from llmops.exceptions import ConfigurationError
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __all__ = [
+    # Entry points
+    "init",
+    "shutdown",
+    "is_configured",
+    # Configuration types
+    "Config",
+    "ServiceConfig",
+    "ArizeConfig",
+    "MLflowConfig",
+    "InstrumentationConfig",
+    "ValidationConfig",
+    # Exceptions
     "ConfigurationError",
+    # Metadata
     "__version__",
-    "arize",
-    "mlflow",
 ]
-
-
-def __getattr__(name: str):
-    if name in {"arize", "mlflow"}:
-        import importlib
-
-        return importlib.import_module(f"llmops.{name}")
-    raise AttributeError(f"module 'llmops' has no attribute '{name}'")
-
-
-def __dir__() -> list[str]:
-    return sorted(__all__)
