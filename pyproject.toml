@@ -1,9 +1,101 @@
 [project]
-name = "llmops"
+name = "llmops-monorepo"
 version = "0.1.0"
-description = "Add your description here"
+description = "LLM Observability Platform"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.12"
+dependencies = []
+
+# =============================================================================
+# Tool Configuration (shared across environments)
+# =============================================================================
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+# =============================================================================
+# Hatch Environments
+# =============================================================================
+# All dev tooling runs from root via Hatch. Paths target llm-observability-sdk.
+# Developers can use either:
+#   - `hatch run check` (Hatch, portable)
+#   - `just` recipes (UV, faster for iterative dev)
+
+[tool.hatch.envs.default]
+skip-install = true
+installer = "uv"
+
+# -----------------------------------------------------------------------------
+# Lint Environment
+# -----------------------------------------------------------------------------
+[tool.hatch.envs.lint]
+description = "Static analysis: linting, formatting, type checking, security"
+detached = true
+installer = "uv"
 dependencies = [
-    "requests>=2.32.5",
+    # Lint tools
+    "ruff>=0.14.11",
+    "mypy>=1.19.1",
+    "bandit>=1.9.2",
+    "types-PyYAML>=6.0.0",
+    # SDK runtime dependencies (needed for mypy to resolve imports)
+    "opentelemetry-api>=1.30.0",
+    "opentelemetry-sdk>=1.30.0",
+    "pyyaml>=6.0.0",
+    # Test dependencies (needed for mypy to check test files)
+    "pytest>=8.0",
 ]
+
+[tool.hatch.envs.lint.scripts]
+# Individual checks (used by pre-commit hooks)
+style = "ruff check llm-observability-sdk/src/ llm-observability-sdk/tests/"
+format = "ruff format llm-observability-sdk/src/ llm-observability-sdk/tests/"
+typing = "mypy llm-observability-sdk/src/ llm-observability-sdk/tests/"
+security = "bandit -r llm-observability-sdk/src/ llm-observability-sdk/tests/ -s B101"
+
+# Combined (for developers and CI)
+all = ["style", "format", "typing", "security"]
+
+# Auto-fix variants
+fix = "ruff check --fix llm-observability-sdk/src/ llm-observability-sdk/tests/"
+
+# -----------------------------------------------------------------------------
+# Test Environment
+# -----------------------------------------------------------------------------
+[tool.hatch.envs.test]
+description = "Testing for SDK"
+detached = true
+installer = "uv"
+dependencies = [
+    # Test framework
+    "pytest>=8.0",
+    "pytest-mock>=3.14.0",
+    "httpx>=0.27.0",
+    # Test fixtures (FastAPI app)
+    "fastapi>=0.115.0",
+    "uvicorn>=0.34.0",
+    # Google AI dependencies for testing
+    "google-adk>=1.21.0",
+    "google-genai>=1.50.0",
+    # SDK runtime dependencies
+    "opentelemetry-api>=1.30.0",
+    "opentelemetry-sdk>=1.30.0",
+    "pyyaml>=6.0.0",
+    # Arize dependencies for telemetry tests
+    "arize-otel>=0.7.0",
+    "openinference-instrumentation-google-adk>=0.1.5",
+    "openinference-instrumentation-google-genai>=0.1.9",
+]
+
+[tool.hatch.envs.test.env-vars]
+# Add SDK src to Python path so tests can import llmops
+PYTHONPATH = "llm-observability-sdk/src"
+
+[tool.hatch.envs.test.scripts]
+unit = "pytest llm-observability-sdk/tests/unit/ -v"
+integration = "pytest llm-observability-sdk/tests/integration/ -v -m 'not e2e'"
+e2e = "pytest llm-observability-sdk/tests/ -v -m e2e"
+all = "pytest llm-observability-sdk/tests/unit/ llm-observability-sdk/tests/integration/ -v -m 'not e2e'"
