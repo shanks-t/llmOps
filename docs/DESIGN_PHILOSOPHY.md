@@ -109,6 +109,7 @@ llmops.is_configured() -> bool
 llmops.Config  # Dataclass for programmatic config
 llmops.ConfigurationError  # Exception
 llmops.__version__  # Semver string
+llmops.eval  # Reserved namespace (future)
 ```
 
 **Stability guarantee:** These signatures only change with semver-major versions. If a breaking change is necessary, it will be preceded by at least one minor version with deprecation warnings.
@@ -148,11 +149,40 @@ To add support for a new observability backend:
 To add auto-instrumentation for a new framework:
 
 1. Create `llmops/instrumentation/{name}.py`
-2. Implement wrapper that calls the upstream instrumentor
-3. Add config key to `InstrumentationConfig`
+2. Implement `instrument(tracer_provider)` function that wraps the upstream instrumentor
+3. Register in the instrumentor registry
 4. Instrumenter failures are swallowed (telemetry safety)
 
-### 4.3 Custom Processing (Future)
+**Invariant:** Adding a new instrumenter requires no changes to `llmops/api/` or public config types.
+
+### 4.3 Instrumentor Registry Pattern
+
+The SDK uses a central registry to manage instrumentors. This pattern enables scaling to many instrumentors without API churn.
+
+**Why a registry:**
+- Instrumentors can be added without modifying public `Config` types
+- Configuration uses a list (`instrumentation.enabled`) rather than per-instrumentor boolean fields
+- Unknown instrumentor names are gracefully ignored with a warning
+- Aligns with the "edge mess stays at the edge" principle
+
+**Configuration model:**
+```yaml
+instrumentation:
+  enabled:
+    - google_adk
+    - google_genai
+    - openai  # Future: just add to list, no API changes
+```
+
+**Extension process:**
+1. Create wrapper module in `llmops/instrumentation/`
+2. Add entry to instrumentor registry (single location)
+3. Add optional dependency to `pyproject.toml`
+4. Done — no public API changes, no config type changes
+
+This pattern allows the instrumentor count to grow (OpenAI, Anthropic, Cohere, LangChain, LlamaIndex, etc.) without accumulating boolean fields in the public configuration types.
+
+### 4.4 Custom Processing (Future)
 
 The architecture accommodates future extension points:
 - Span processors for filtering, redacting, or enriching
@@ -186,7 +216,7 @@ results = llmops.eval.run(
 )
 ```
 
-**Status:** Vision only. Interfaces will be defined when implementation begins.
+**Status:** Deferred. Namespace `llmops.eval` reserved. Will wrap Arize AX evaluation primitives. SDK-first API with optional CLI wrapper.
 
 ---
 
@@ -249,6 +279,47 @@ When patterns stabilize, the SDK may define:
 
 **Revisit when:** OpenInference conventions stabilize and teams need SDK-level type safety.
 
+### 7.4 Why Instrumentor Registry Over Explicit Fields
+
+**Context:** Could use explicit boolean fields for each instrumentor in `InstrumentationConfig`:
+```python
+@dataclass
+class InstrumentationConfig:
+    google_adk: bool = True
+    google_genai: bool = True
+    openai: bool = True  # Added for each new instrumentor
+```
+
+**Decision:** Use a registry pattern with an `enabled` list instead.
+
+**Rationale:**
+- Adding instrumentors should not change public API types
+- Boolean fields create API churn as instrumentors are added
+- A list-based config (`enabled: [google_adk, openai]`) is more flexible
+- Unknown instrumentor names can be gracefully ignored
+- Follows OTel pattern where instrumentors are separate packages, not SDK fields
+
+**Trade-off:** Less IDE autocomplete for instrumentor names. Mitigated by documentation and validation warnings for unknown names.
+
+### 7.5 Why Factory Functions Over Protocol
+
+**Context:** Could define a formal `Platform` Protocol that exporters must implement:
+```python
+class Platform(Protocol):
+    def create_tracer_provider(self, config) -> TracerProvider: ...
+    def get_instrumentor_registry(self) -> list: ...
+```
+
+**Decision:** Use simple factory functions instead.
+
+**Rationale:**
+- Exporters are internal, not a third-party extension point
+- Factory functions are simpler and sufficient for internal use
+- Protocols add boilerplate without benefit when extension is controlled
+- Aligns with OTel Python SDK pattern (duck-typed base classes, not Protocols)
+
+**Revisit when:** The SDK needs to support third-party exporter plugins (currently not planned).
+
 ---
 
 ## Appendix A: Glossary
@@ -258,7 +329,9 @@ When patterns stabilize, the SDK may define:
 | **API** | Stable public interface (`llmops.init()`, etc.) |
 | **SDK** | Internal implementation (config loading, pipeline composition) |
 | **Exporter** | Component that sends telemetry to a backend (Arize, MLflow) |
+| **Exporter Factory** | Function that creates a configured TracerProvider for a specific backend |
 | **Instrumenter** | Component that auto-instruments a framework (Google ADK) |
+| **Instrumentor Registry** | Central mapping of instrumentor names to their module paths |
 | **Processor** | Component that transforms spans (filtering, batching) |
 | **Platform** | Observability backend (Arize, MLflow) — term from PRD, now called "exporter" |
 | **Pipeline** | Composed chain: instrumenter → processor → exporter |

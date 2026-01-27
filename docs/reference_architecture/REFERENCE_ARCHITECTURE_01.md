@@ -1,14 +1,14 @@
 # PRD_01 — Reference Architecture
 
 **Version:** 0.2
-**Date:** 2026-01-22
+**Date:** 2026-01-27
 **Status:** Draft
 
 ---
 
 ## 1. Purpose
 
-This document defines how the PRD_01 system should be built. It codifies architectural invariants, boundaries, and patterns for a **multi-platform auto-instrumentation SDK** with explicit platform selection.
+This document defines how the PRD_01 system should be built. It codifies architectural invariants, boundaries, and patterns for a **config-driven auto-instrumentation SDK** with a single entry point.
 
 ---
 
@@ -18,12 +18,10 @@ This document defines how the PRD_01 system should be built. It codifies archite
 
 | Component | Responsibility | Notes |
 |-----------|----------------|-------|
-| **Package Root** | Lazy platform accessors via `__getattr__` | No platform deps at import |
-| **Platform Module** | `<platform>.instrument()` entry point | One per supported backend |
-| **Platform Implementation** | Backend-specific TracerProvider creation | Uses platform's SDK (arize.otel, mlflow) |
-| **Shared Config Loader** | Read YAML, substitute env vars | Platform-agnostic |
-| **Platform Config Parser** | Extract platform section, validate | Platform-specific validation |
-| **Instrumentor Runner** | Apply auto-instrumentation | Shared; uses platform's registry |
+| **Public API** | `init()`, `shutdown()`, `is_configured()`, `Config` types | Stable, semver-major only |
+| **SDK Layer** | Config loading, lifecycle, pipeline composition | Internal, may change |
+| **Exporters** | Platform-specific TracerProvider creation | Internal, isolated per-platform |
+| **Instrumentation** | Auto-instrumentation wrappers + registry | Internal, registry-based |
 
 ### 2.2 Layer Diagram
 
@@ -31,32 +29,38 @@ This document defines how the PRD_01 system should be built. It codifies archite
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                            PUBLIC API LAYER                              │
 │                                                                         │
-│   llmops.arize.instrument()    llmops.mlflow.instrument()               │
+│   llmops.init(config)    llmops.shutdown()    llmops.is_configured()    │
+│   llmops.Config          llmops.ConfigurationError                      │
 │                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                           PLATFORM LAYER                                 │
+│                              SDK LAYER                                   │
 │                                                                         │
 │   ┌─────────────────────┐    ┌─────────────────────┐                    │
-│   │   ArizePlatform     │    │   MLflowPlatform    │                    │
-│   │   - arize.otel      │    │   - (skeleton)      │                    │
-│   │   - OpenInference   │    │   - MLflow tracing  │                    │
+│   │    Config Loading   │    │ Pipeline Composition│                    │
+│   │    (YAML + env)     │    │ (exporter dispatch) │                    │
 │   └─────────────────────┘    └─────────────────────┘                    │
 │                                                                         │
-│   All implement: Platform Protocol                                      │
+│   ┌─────────────────────┐    ┌─────────────────────┐                    │
+│   │  Lifecycle Mgmt     │    │   Validation        │                    │
+│   │  (state, shutdown)  │    │   (strict/permissive)│                   │
+│   └─────────────────────┘    └─────────────────────┘                    │
 │                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                      SHARED INFRASTRUCTURE LAYER                         │
+│                            EDGE LAYERS                                   │
 │                                                                         │
-│   ┌──────────────┐  ┌──────────────┐  ┌──────────────────────────────┐  │
-│   │Config Loader │  │  Validation  │  │   Instrumentor Runner        │  │
-│   │(YAML + env)  │  │(strict/perm) │  │   (registry-based)           │  │
-│   └──────────────┘  └──────────────┘  └──────────────────────────────┘  │
+│   ┌─────────────────────────────┐    ┌─────────────────────────────┐   │
+│   │         EXPORTERS           │    │      INSTRUMENTATION        │   │
+│   │                             │    │                             │   │
+│   │  arize/exporter.py          │    │  google_adk.py              │   │
+│   │  mlflow/exporter.py         │    │  google_genai.py            │   │
+│   │  (factory functions)        │    │  _registry.py               │   │
+│   └─────────────────────────────┘    └─────────────────────────────┘   │
 │                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
                                     │
@@ -75,26 +79,24 @@ This document defines how the PRD_01 system should be built. It codifies archite
 **Strict downward-only dependencies:**
 
 ```
-Package Root
+Public API (llmops/api/)
      │
      ▼
-Platform Module ──────────────────────────┐
-     │                                    │
-     ▼                                    ▼
-Platform Implementation          Shared Config Loader
-     │                                    │
-     ▼                                    ▼
-Platform SDK (arize.otel)        Validation Utils
+SDK Layer (llmops/sdk/)
      │
-     ▼
-Instrumentor Runner (shared)
+     ├──────────────────────────────┐
+     ▼                              ▼
+Exporters (llmops/exporters/)    Instrumentation (llmops/instrumentation/)
+     │                              │
+     ▼                              ▼
+External SDKs (arize.otel, etc)  External instrumentors (openinference-*)
 ```
 
 **Rules:**
 - No component may depend on a higher-level component
-- Platform implementations may not depend on each other
-- Shared infrastructure may not depend on any platform
-- Platform modules depend on their specific external SDK
+- Exporter implementations may not depend on each other
+- SDK layer may not import vendor SDKs directly
+- Instrumentation wrappers may not depend on exporters
 
 ---
 
@@ -109,140 +111,119 @@ INVARIANT 1: Telemetry never breaks business logic
 ```
 
 **Rules:**
-- No SDK call raises exceptions to user code after initialization
-- `instrument()` logs failures and returns safely (permissive mode)
+- No SDK call raises exceptions to user code after initialization (permissive mode)
+- `init()` in permissive mode logs failures and returns with no-op provider
+- `init()` in strict mode raises `ConfigurationError` for invalid config
 - Instrumentor errors do not prevent application startup
 - Configuration errors fail fast at startup, not during runtime
 
 ### 3.2 Explicit Platform Selection
 
 ```
-INVARIANT 2: Platform selection is always explicit in the API call
+INVARIANT 2: Platform selection is explicit in configuration
 ```
 
 **Rules:**
-- Users must call `llmops.<platform>.instrument()`
-- No auto-detection of platform from config or environment
+- Users must specify `platform:` field in configuration
+- No auto-detection of platform from environment
 - No default platform if none specified
-- Platform name is visible in the import/call site
+- Platform determines which exporter factory is invoked
 
-### 3.3 Lazy Platform Loading
+### 3.3 Lazy Dependency Loading
 
 ```
-INVARIANT 3: Platform dependencies are not imported until platform is accessed
+INVARIANT 3: Platform dependencies are not imported until init() dispatches to them
 ```
 
 **Rules:**
 - `import llmops` must succeed without any platform dependencies installed
-- Platform module is loaded only on first attribute access
-- Missing platform dependencies raise `ImportError` at access time, not import time
+- Exporter modules loaded only when configured platform matches
+- Missing platform dependencies raise `ConfigurationError` at init time
 - Error message includes installation instructions
 
-**Implementation Pattern:**
-```python
-# llmops/__init__.py
-def __getattr__(name: str):
-    if name == "arize":
-        from llmops import arize
-        return arize
-    if name == "mlflow":
-        from llmops import mlflow
-        return mlflow
-    raise AttributeError(f"module 'llmops' has no attribute '{name}'")
-```
-
-### 3.4 Platform Isolation
+### 3.4 Exporter Isolation
 
 ```
-INVARIANT 4: Platforms are independent and isolated
+INVARIANT 4: Exporters are independent and isolated
 ```
 
 **Rules:**
-- Adding a new platform requires no changes to existing platform code
-- Each platform owns its TracerProvider lifecycle
-- Platform implementations do not share mutable state
+- Adding a new exporter requires no changes to existing exporter code
+- Each exporter owns its TracerProvider lifecycle
+- Exporter implementations do not share mutable state
 - Configuration sections are platform-specific (`arize:`, `mlflow:`)
 
 ### 3.5 Single Backend Per Call
 
 ```
-INVARIANT 5: Each instrument() call configures exactly one backend
+INVARIANT 5: Each init() call configures exactly one backend
 ```
 
 **Rules:**
-- One TracerProvider per `instrument()` invocation
+- One TracerProvider per `init()` invocation
 - No multi-backend routing within a single call
-- Calling multiple platforms' `instrument()` is undefined behavior (user error)
+- Calling `init()` multiple times logs a warning
 
 ### 3.6 Configuration Source of Truth
 
 ```
-INVARIANT 6: Configuration requires explicit path selection
+INVARIANT 6: Configuration requires explicit path or programmatic Config
 ```
 
 **Rules:**
-- `instrument(config_path=...)` must be provided or `LLMOPS_CONFIG_PATH` must be set
+- `init(config=...)` must be provided as path or `Config` object
+- Fallback to `LLMOPS_CONFIG_PATH` environment variable if no argument
 - Each platform reads shared sections plus its own section
-- Environment variables override file values
-- Only one config file is used per process
+- Environment variables substitute `${VAR_NAME}` patterns in YAML
+- Only one config source is used per init call
 
 ---
 
-## 4. Platform Protocol
+## 4. Exporter Factory Interface
 
-### 4.1 Interface Definition
+### 4.1 Factory Function Pattern
 
-All platforms must implement this protocol:
+Exporters are implemented as factory functions, not classes or protocols. Each exporter module provides a function that creates a configured TracerProvider.
 
-```python
-from typing import Protocol
-from pathlib import Path
-from opentelemetry.sdk.trace import TracerProvider
-
-class Platform(Protocol):
-    """Protocol that all platform implementations must satisfy."""
-
-    @property
-    def name(self) -> str:
-        """Platform identifier (e.g., 'arize', 'mlflow')."""
-        ...
-
-    @property
-    def config_section(self) -> str:
-        """Config file section name (e.g., 'arize', 'mlflow')."""
-        ...
-
-    @property
-    def install_extra(self) -> str:
-        """pip extra name (e.g., 'arize' for pip install llmops[arize])."""
-        ...
-
-    def check_dependencies(self) -> None:
-        """Raise ImportError with helpful message if deps missing."""
-        ...
-
-    def create_tracer_provider(self, config: LLMOpsConfig) -> TracerProvider:
-        """Create platform-specific TracerProvider."""
-        ...
-
-    def get_instrumentor_registry(self) -> list[tuple[str, str, str]]:
-        """Return list of (config_key, module_path, class_name) tuples."""
-        ...
+**Factory signature:**
+```
+create_{platform}_provider(config: Config) -> TracerProvider
 ```
 
-### 4.2 Protocol Rationale
+**Responsibilities:**
+- Check that platform dependencies are installed
+- Extract platform-specific config section
+- Create and configure TracerProvider
+- Return provider (SDK sets it as global)
 
-**Why Protocol over ABC:**
-- No inheritance required (duck typing)
-- Easier to test with mocks
-- More Pythonic
-- Better composition patterns
+### 4.2 Exporter Registry
 
-**Note on `@runtime_checkable`:**
-The `@runtime_checkable` decorator is optional. It enables `isinstance()` checks but has a small performance cost when those checks are used. For this SDK:
-- Omit `@runtime_checkable` unless `isinstance()` checks are needed
-- If used, avoid `isinstance()` checks in hot paths
-- Type checkers (mypy, pyright) validate Protocol conformance statically without the decorator
+The SDK maintains a registry mapping platform names to factory functions. Dispatch is a simple dictionary lookup followed by dynamic import.
+
+**Registry structure:**
+```
+platform_name -> (module_path, factory_function_name)
+```
+
+**Dispatch flow:**
+1. Read `platform` from config
+2. Look up module path and function name in registry
+3. Import module dynamically
+4. Call factory function with config
+5. Set returned TracerProvider as global
+
+### 4.3 Adding a New Exporter
+
+To add a new exporter:
+
+1. Create module at `llmops/exporters/{name}/exporter.py`
+2. Implement `create_{name}_provider(config) -> TracerProvider`
+3. Implement `check_dependencies()` that raises `ImportError` with install instructions
+4. Add entry to exporter registry in pipeline module
+5. Add configuration section parser
+6. Add optional dependencies to `pyproject.toml`
+
+**Invariant:** No changes to public API or existing exporters required.
 
 ---
 
@@ -251,56 +232,44 @@ The `@runtime_checkable` decorator is optional. It enables `isinstance()` checks
 ### 5.1 Sequence
 
 ```
-llmops.<platform>.instrument(config_path?)
+llmops.init(config="llmops.yaml")
   │
-  ├─▶ Check platform dependencies installed
-  │     └─▶ ImportError if missing (with pip install hint)
+  ├─▶ Resolve config source (path string, Path object, or Config)
   │
-  ├─▶ Resolve config path (arg > env var > error)
+  ├─▶ If path: Load and parse YAML config
+  │     ├─▶ Substitute environment variables
+  │     └─▶ Parse into Config dataclass
   │
-  ├─▶ Load YAML config file (shared infrastructure)
+  ├─▶ Validate configuration
+  │     ├─▶ Strict mode: raise ConfigurationError on invalid
+  │     └─▶ Permissive mode: log warning, continue with defaults
   │
-  ├─▶ Substitute environment variables
+  ├─▶ Dispatch to exporter factory based on `platform` field
+  │     ├─▶ Check platform dependencies installed
+  │     └─▶ Create TracerProvider
   │
-  ├─▶ Platform extracts its section + shared sections
+  ├─▶ Set TracerProvider as global
   │
-  ├─▶ Platform validates its configuration
-  │     ├─▶ Strict mode: raise ConfigurationError
-  │     └─▶ Permissive mode: log warning, use no-op provider
-  │
-  ├─▶ Platform creates TracerProvider
-  │     └─▶ (e.g., arize.otel.register(...))
+  ├─▶ Apply auto-instrumentation
+  │     ├─▶ Read enabled instrumentors from config
+  │     ├─▶ For each enabled instrumentor in registry:
+  │     │     ├─▶ Import instrumentor module
+  │     │     ├─▶ Call instrument(provider)
+  │     │     └─▶ Log and continue on failure
+  │     └─▶ Unknown instrumentors logged as warnings
   │
   ├─▶ Register atexit handler for shutdown
   │
-  ├─▶ Apply auto-instrumentation (shared runner)
-  │     └─▶ Uses platform's instrumentor registry
-  │     └─▶ Each instrumentor failure logged, not raised
-  │
-  └─▶ Return TracerProvider
+  └─▶ Mark SDK as configured
 ```
 
-### 5.2 Dependency Check Pattern
+### 5.2 Validation Modes
 
-```python
-def check_dependencies(self) -> None:
-    """Raise ImportError with helpful message if deps missing."""
-    try:
-        import arize.otel
-    except ImportError:
-        raise ImportError(
-            f"Arize platform requires 'arize-otel' package.\n"
-            f"Install with: pip install llmops[arize]"
-        ) from None
-```
+Validation occurs during `init()` only:
+- **Strict (development)**: raises `ConfigurationError`, fails startup
+- **Permissive (production, default)**: logs warning, uses no-op provider
 
-### 5.3 Validation Contract
-
-Validation occurs during `instrument()` only:
-- **Strict (dev)**: raises `ConfigurationError`, fails startup
-- **Permissive (prod, default)**: logs warning, returns no-op provider
-
-Each platform validates its own configuration section. Shared infrastructure validates common sections (`service:`, `validation:`).
+Each exporter validates its own configuration section. Shared infrastructure validates common sections (`service:`, `validation:`).
 
 ---
 
@@ -308,48 +277,28 @@ Each platform validates its own configuration section. Shared infrastructure val
 
 ### 6.1 Dependency Errors
 
-```
-PATTERN: Fail fast with actionable message
-```
+**Pattern:** Fail fast with actionable message
 
-```python
-# At platform access time
->>> import llmops
->>> llmops.arize.instrument()
-ImportError: Arize platform requires 'arize-otel' package.
-Install with: pip install llmops[arize]
-```
+When platform dependencies are not installed, raise `ConfigurationError` (wrapping `ImportError`) with installation instructions.
 
 ### 6.2 Configuration Errors
 
-```
-PATTERN: Respect validation mode
-```
+**Pattern:** Respect validation mode
 
-```python
-# Strict mode
->>> llmops.arize.instrument(config_path="missing.yaml")
-ConfigurationError: Configuration file not found: missing.yaml
+- Strict mode: raise `ConfigurationError` with details
+- Permissive mode: log warning, use no-op provider, continue
 
-# Permissive mode
->>> llmops.arize.instrument(config_path="invalid.yaml")
-# Logs: WARNING - Invalid config, using no-op provider
-# Returns: NoOpTracerProvider
-```
+### 6.3 Instrumentation Errors
 
-### 6.3 Telemetry Errors
+**Pattern:** Swallow and log
 
-```
-PATTERN: Swallow and log
-```
+Instrumentor failures are logged at warning level but never propagate. Application startup continues. Telemetry should never break business logic.
 
-```python
-try:
-    _internal_telemetry_operation()
-except Exception as exc:
-    logger.warning("Telemetry error (ignored): %s", exc)
-    # Continue execution - never break business logic
-```
+### 6.4 Runtime Telemetry Errors
+
+**Pattern:** Swallow and log
+
+Export failures are handled by OpenTelemetry SDK (retry, backoff). SDK does not add additional error handling for runtime telemetry.
 
 ---
 
@@ -360,243 +309,200 @@ except Exception as exc:
 ```yaml
 # llmops.yaml
 
-# Shared across all platforms
-service:
-  name: "my-service"           # Required
-  version: "1.0.0"             # Optional
+# Required: Platform selection
+platform: arize  # or "mlflow"
 
-# Platform-specific sections (only one is read per instrument() call)
+# Required: Service identification
+service:
+  name: "my-service"
+  version: "1.0.0"  # Optional
+
+# Platform-specific sections (only matching platform is read)
 arize:
-  endpoint: "http://localhost:6006/v1/traces"  # Required for arize
+  endpoint: "http://localhost:6006/v1/traces"
   project_name: "my-project"
   api_key: "${ARIZE_API_KEY}"
   space_id: "${ARIZE_SPACE_ID}"
   transport: "http"
-  batch_spans: true
-  debug: false
-  certificate_file: "./certs/ca.pem"
+  batch: true
 
-mlflow:  # Skeleton
+mlflow:
   tracking_uri: "http://localhost:5001"
   experiment_name: "my-experiment"
 
-# Shared instrumentation config
+# Auto-instrumentation configuration
 instrumentation:
-  google_adk: true
-  google_genai: true
+  enabled:
+    - google_adk
+    - google_genai
 
-# Shared validation config
+# Validation mode
 validation:
-  mode: permissive
+  mode: permissive  # or "strict"
 ```
 
 ### 7.2 Section Ownership
 
 | Section | Owner | Notes |
 |---------|-------|-------|
+| `platform:` | SDK | Determines exporter dispatch |
 | `service:` | Shared | All platforms use this |
-| `arize:` | ArizePlatform | Only read by Arize |
-| `mlflow:` | MLflowPlatform | Only read by MLflow |
-| `instrumentation:` | Shared | Platform filters by available instrumentors |
-| `validation:` | Shared | All platforms respect this |
+| `arize:` | Arize exporter | Only read when platform is "arize" |
+| `mlflow:` | MLflow exporter | Only read when platform is "mlflow" |
+| `instrumentation:` | SDK | Shared across all platforms |
+| `validation:` | SDK | Shared across all platforms |
 
-### 7.3 Required Fields by Platform
+### 7.3 Required Fields
 
 | Platform | Required Fields |
 |----------|-----------------|
-| `arize` | `service.name`, `arize.endpoint` |
-| `mlflow` | `service.name`, `mlflow.tracking_uri` |
+| All | `platform`, `service.name` |
+| `arize` | `arize.endpoint` |
+| `mlflow` | `mlflow.tracking_uri` |
 
 ---
 
-## 8. Auto-Instrumentation Rules
+## 8. Auto-Instrumentation Architecture
 
-### 8.1 Instrumentor Registry Pattern
+### 8.1 Instrumentor Registry
 
-Each platform defines its supported instrumentors:
+The SDK maintains a central registry of available instrumentors. Each entry maps a config key to a module path and function name.
 
-```python
-# Arize platform registry
-ARIZE_INSTRUMENTORS = [
-    ("google_adk", "openinference.instrumentation.google_adk", "GoogleADKInstrumentor"),
-    ("google_genai", "openinference.instrumentation.google_genai", "GoogleGenAIInstrumentor"),
-]
-
-# MLflow platform registry (skeleton)
-MLFLOW_INSTRUMENTORS = [
-    ("gemini", "mlflow.gemini", "autolog"),
-    ("openai", "mlflow.openai", "autolog"),
-]
+**Registry structure:**
+```
+config_key -> (module_path, function_name)
 ```
 
-### 8.2 Shared Instrumentation Runner
+**Example entries:**
+- `google_adk` -> `(llmops.instrumentation.google_adk, instrument)`
+- `google_genai` -> `(llmops.instrumentation.google_genai, instrument)`
 
-The instrumentor runner is shared infrastructure. Platforms provide the registry; the runner applies it:
+### 8.2 Configuration Model
 
-```python
-def apply_instrumentation(
-    config: InstrumentationConfig,
-    registry: list[tuple[str, str, str]],
-    provider: TracerProvider
-) -> None:
-    """Apply auto-instrumentation from platform's registry."""
-    for config_key, module_path, class_name in registry:
-        if not getattr(config, config_key, False):
-            continue  # Disabled in config
+Instrumentation is configured via a list of enabled instrumentors, not individual boolean fields. This allows adding new instrumentors without changing the public API.
 
-        try:
-            module = importlib.import_module(module_path)
-            instrumentor = getattr(module, class_name)()
-            instrumentor.instrument(tracer_provider=provider)
-        except ImportError:
-            logger.debug("Instrumentor not installed: %s", module_path)
-        except Exception as e:
-            logger.warning("Instrumentor failed: %s - %s", config_key, e)
+```yaml
+instrumentation:
+  enabled:
+    - google_adk
+    - google_genai
+    - openai  # Future: just add to list
 ```
 
-### 8.3 Order of Operations
+### 8.3 Application Flow
 
-1. Create TracerProvider (platform-specific)
-2. Set as global tracer provider
-3. Register atexit handler
-4. Apply instrumentors from platform's registry (shared runner)
+1. Read `instrumentation.enabled` list from config
+2. For each name in the list:
+   - Look up in instrumentor registry
+   - If not found: log warning, continue
+   - If found: import module, call instrument function
+   - On ImportError: log debug (not installed), continue
+   - On other error: log warning, continue
+3. Application startup completes regardless of instrumentor failures
+
+### 8.4 Adding a New Instrumentor
+
+To add a new instrumentor:
+
+1. Create module at `llmops/instrumentation/{name}.py`
+2. Implement `instrument(tracer_provider: TracerProvider) -> None`
+3. Add entry to instrumentor registry
+4. Add optional dependency to `pyproject.toml`
+
+**Invariant:** No changes to public API types required.
+
+### 8.5 Instrumentor Module Contract
+
+Each instrumentor module must provide:
+- `instrument(tracer_provider: TracerProvider) -> None` function
+- Lazy import of upstream instrumentor (inside function body)
+- Raise `ImportError` if upstream package not installed
 
 ---
 
-## 9. Extension Points
-
-### 9.1 Adding a New Platform
-
-```
-INVARIANT 7: New platforms require no changes to existing platforms
-```
-
-**Steps to add a platform:**
-
-1. **Create platform implementation** (`llmops/_platforms/newplatform.py`):
-   ```python
-   class NewPlatform:
-       @property
-       def name(self) -> str:
-           return "newplatform"
-
-       def create_tracer_provider(self, config) -> TracerProvider:
-           ...
-
-       def get_instrumentor_registry(self) -> list[tuple[str, str, str]]:
-           return [...]
-   ```
-
-2. **Create public module** (`llmops/newplatform.py`):
-   ```python
-   from llmops._platforms.newplatform import NewPlatform
-
-   _platform = NewPlatform()
-
-   def instrument(config_path=None):
-       return _platform.instrument(config_path)
-   ```
-
-3. **Add lazy accessor** (`llmops/__init__.py`):
-   ```python
-   def __getattr__(name: str):
-       if name == "newplatform":
-           from llmops import newplatform
-           return newplatform
-       # ... existing platforms
-   ```
-
-4. **Add optional dependencies** (`pyproject.toml`):
-   ```toml
-   [project.optional-dependencies]
-   newplatform = ["newplatform-sdk>=1.0"]
-   ```
-
-### 9.2 Adding a New Instrumentor
-
-**Steps to add an instrumentor to an existing platform:**
-
-1. Add entry to platform's instrumentor registry
-2. Add optional dependency to platform's extras
-3. No code changes required elsewhere
-
----
-
-## 10. Package Structure
+## 9. Package Structure
 
 ```
 llmops/
-├── __init__.py              # Lazy accessors, version, ConfigurationError re-export
-├── exceptions.py            # ConfigurationError definition
-├── config.py                # Shared config loading (YAML, env vars)
-├── arize.py                 # Public module: llmops.arize.instrument()
-├── mlflow.py                # Public module: llmops.mlflow.instrument() (skeleton)
-├── _platforms/
+├── __init__.py              # Re-exports from api/, version
+├── exceptions.py            # ConfigurationError
+├── api/
+│   ├── __init__.py          # Public API re-exports
+│   ├── _init.py             # init(), shutdown(), is_configured()
+│   └── types.py             # Config, ServiceConfig, etc.
+├── sdk/
 │   ├── __init__.py
-│   ├── _base.py             # Platform Protocol definition
-│   ├── _registry.py         # Shared instrumentor runner
-│   ├── arize.py             # ArizePlatform implementation
-│   └── mlflow.py            # MLflowPlatform implementation (skeleton)
+│   ├── config/
+│   │   ├── __init__.py
+│   │   └── load.py          # YAML loading, env var substitution
+│   ├── lifecycle.py         # Global state management
+│   └── pipeline.py          # Exporter dispatch, instrumentation
+├── exporters/
+│   ├── __init__.py
+│   ├── arize/
+│   │   ├── __init__.py
+│   │   └── exporter.py      # create_arize_provider()
+│   └── mlflow/
+│       ├── __init__.py
+│       └── exporter.py      # create_mlflow_provider()
+├── instrumentation/
+│   ├── __init__.py
+│   ├── _registry.py         # Instrumentor registry
+│   ├── google_adk.py        # instrument() wrapper
+│   └── google_genai.py      # instrument() wrapper
+├── eval/                    # RESERVED: Evaluation (future)
+│   └── (structure TBD)
 └── _internal/
     ├── __init__.py
-    └── telemetry.py         # Shared telemetry utilities (no-op provider, etc.)
+    └── telemetry.py         # Shared utilities
 ```
 
 ---
 
-## 11. Testing Strategy
+## 10. Testing Strategy
 
-### 11.1 Unit Testing Platforms
+### 10.1 Unit Testing Exporters
 
-Each platform can be tested in isolation:
+Each exporter can be tested in isolation by mocking the upstream SDK:
 
-```python
-def test_arize_platform_creates_provider(mock_arize_otel):
-    from llmops._platforms.arize import ArizePlatform
+- Test factory function creates provider with correct config
+- Test dependency check raises helpful ImportError
+- Test config section extraction
 
-    platform = ArizePlatform()
-    provider = platform.create_tracer_provider(mock_config)
+### 10.2 Unit Testing Instrumentation
 
-    mock_arize_otel.register.assert_called_once()
-```
+Each instrumentor wrapper can be tested by mocking the upstream instrumentor:
 
-### 11.2 Integration Testing
+- Test instrument function calls upstream correctly
+- Test ImportError when upstream not installed
+- Test graceful handling of upstream errors
 
-```python
-def test_lazy_loading_does_not_import_arize():
-    # Ensure arize.otel is not in sys.modules
-    import llmops
-    assert "arize.otel" not in sys.modules
+### 10.3 Integration Testing
 
-def test_arize_access_imports_arize():
-    import llmops
-    _ = llmops.arize  # Access triggers import
-    # Now arize module is loaded (but not necessarily arize.otel until instrument())
-```
+- Test `init()` with valid config creates working provider
+- Test `init()` with missing dependencies raises ConfigurationError
+- Test `init()` in permissive mode continues on invalid config
+- Test `shutdown()` flushes and cleans up
+- Test instrumentor failures don't break init
 
-### 11.3 Dependency Error Testing
+### 10.4 Config Loading Tests
 
-```python
-def test_missing_arize_deps_raises_helpful_error(monkeypatch):
-    # Simulate arize.otel not installed
-    monkeypatch.setattr("builtins.__import__", mock_import_error)
-
-    with pytest.raises(ImportError, match="pip install llmops\\[arize\\]"):
-        llmops.arize.instrument()
-```
+- Test YAML parsing and validation
+- Test environment variable substitution
+- Test path resolution (argument vs env var)
+- Test strict vs permissive validation modes
 
 ---
 
-## 12. Related Documents
+## 11. Related Documents
 
 | Document | Purpose |
 |----------|---------|
 | `docs/prd/PRD_01.md` | Requirements and success criteria |
 | `docs/CONCEPTUAL_ARCHITECTURE.md` | High-level conceptual view |
-| `docs/api_spec/API_SPEC_01.md` | Public interfaces and configuration contracts |
-| `docs/analysis/PLATFORM_ARCHITECTURE_ANALYSIS.md` | Analysis of design options |
+| `docs/DESIGN_PHILOSOPHY.md` | Design principles and decisions |
 
 ---
 
 **Document Owner:** Platform Team
-**Last Updated:** 2026-01-22
+**Last Updated:** 2026-01-27

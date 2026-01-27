@@ -27,28 +27,28 @@ We need a thin SDK layer that:
 
 ## 2. Product Vision
 
-A **platform-explicit SDK** where:
+A **config-driven auto-instrumentation SDK** where:
 
-1. Users call `llmops.<platform>.instrument()` to clearly indicate their observability backend
-2. Each platform module encapsulates its specific setup logic and dependencies
-3. New platforms can be added without changing the core SDK interface
-4. The developer experience remains simple: import, call, done
+1. Users call `llmops.init(config)` with a configuration file that specifies the platform
+2. Platform selection is explicit in configuration, not scattered across code
+3. New platforms can be added without changing the public API
+4. The developer experience remains simple: import, configure, call `init()`, done
 
 ### API Design
 
 ```python
 import llmops
 
-# Arize/Phoenix backend
-llmops.arize.instrument(config_path="llmops.yaml")
+# Single entry point - platform determined by config
+llmops.init(config="llmops.yaml")
 
-# MLflow backend (skeleton implementation)
-llmops.mlflow.instrument(config_path="llmops.yaml")
+# Or with programmatic config
+llmops.init(config=llmops.Config(platform="arize", ...))
 ```
 
 The SDK provides:
-- Platform-namespaced `instrument()` entry points
-- A single-user interface for configuration (shared config file with platform-specific sections)
+- A single `init()` entry point with config-driven platform selection
+- A unified configuration file with platform-specific sections
 - Automatic setup for platform-specific telemetry plus Google ADK and Google GenAI
 
 ---
@@ -72,12 +72,12 @@ The SDK provides:
 
 ## 4. Goals
 
-1. **Explicit Platform Selection** — The API call clearly indicates which platform is being used
-2. **Platform Isolation** — Each platform's dependencies and logic are encapsulated in its own module
-3. **Extensible Architecture** — New platforms can be added without modifying existing platform modules
-4. **Consistent Interface** — All platform modules expose the same `instrument()` signature
-5. **One-call setup** — `instrument()` wires telemetry and auto-instrumentation with no additional code
-6. **Config-driven** — Explicit config path via `instrument()` or env var, file-first with overrides
+1. **Explicit Platform Selection** — Platform is explicit in configuration (`platform: arize`)
+2. **Platform Isolation** — Each platform's dependencies and logic are encapsulated in its own exporter module
+3. **Extensible Architecture** — New platforms (exporters) can be added without modifying existing code
+4. **Consistent Interface** — Single `init()` entry point, config drives composition
+5. **One-call setup** — `init()` wires telemetry and auto-instrumentation with no additional code
+6. **Config-driven** — Explicit config path via `init()` or env var, file-first with overrides
 7. **Safety** — Telemetry never breaks business logic
 
 ---
@@ -112,20 +112,20 @@ The SDK provides:
 
 | ID | Requirement | Priority |
 |----|-------------|----------|
-| F1 | Each platform exposes `llmops.<platform>.instrument(config_path)` | Must |
-| F2 | `llmops.arize.instrument()` initializes Arize telemetry and returns a tracer provider | Must |
-| F3 | `llmops.arize.instrument()` auto-instruments Google ADK | Must |
-| F4 | `llmops.arize.instrument()` auto-instruments Google GenAI | Must |
-| F5 | Platform modules are lazy-imported (no import-time side effects) | Must |
-| F6 | `instrument()` requires an explicit config path (arg or env var) | Must |
-| F7 | `instrument()` accepts `llmops.yaml` (preferred) and `llmops.yml` (supported) | Must |
-| F8 | Each platform module defines its supported instrumentors | Must |
-| F9 | Config schema includes platform-specific sections (`arize:`, `mlflow:`) | Must |
-| F10 | Sensitive values (e.g., API keys) can be set via env var overrides | Must |
-| F11 | Invalid platform access raises `ImportError` with helpful message | Should |
-| F12 | Platform modules share common config loading and validation infrastructure | Should |
-| F13 | Future platforms can be added without core SDK changes | Should |
-| F14 | `llmops.mlflow.instrument()` exists as a skeleton to validate extensibility | Should |
+| F1 | `llmops.init(config)` initializes telemetry based on `platform` field in config | Must |
+| F2 | `llmops.init()` with `platform: arize` initializes Arize telemetry | Must |
+| F3 | `llmops.init()` auto-instruments Google ADK when enabled | Must |
+| F4 | `llmops.init()` auto-instruments Google GenAI when enabled | Must |
+| F5 | Exporter modules are lazy-loaded (no import-time side effects) | Must |
+| F6 | `init()` requires an explicit config path (arg or env var) or Config object | Must |
+| F7 | `init()` accepts `llmops.yaml` (preferred) and `llmops.yml` (supported) | Must |
+| F8 | Instrumentors are managed via a central registry | Must |
+| F9 | Config schema includes `platform` field and platform-specific sections | Must |
+| F10 | Sensitive values (e.g., API keys) can be set via env var substitution | Must |
+| F11 | Missing platform dependencies raise `ConfigurationError` with helpful message | Should |
+| F12 | Exporters share common config loading and validation infrastructure | Should |
+| F13 | Future exporters can be added without public API changes | Should |
+| F14 | MLflow exporter exists as a skeleton to validate extensibility | Should |
 
 ### 7.2 Non-Functional Requirements
 
@@ -149,63 +149,64 @@ The SDK provides:
 
 ```
 llmops/
-├── __init__.py           # Lazy platform accessors via __getattr__
-├── exceptions.py         # Shared exceptions (ConfigurationError)
-├── config.py             # Shared config loading and validation
-├── arize.py              # Public: llmops.arize.instrument()
-├── mlflow.py             # Public: llmops.mlflow.instrument() (skeleton)
-├── _platforms/           # Internal platform implementations
+├── __init__.py              # Re-exports from api/, version
+├── exceptions.py            # ConfigurationError
+├── api/
+│   ├── __init__.py          # Public API re-exports
+│   ├── _init.py             # init(), shutdown(), is_configured()
+│   └── types.py             # Config, ServiceConfig, etc.
+├── sdk/
 │   ├── __init__.py
-│   ├── _base.py          # Platform Protocol definition
-│   ├── _registry.py      # Shared instrumentor runner
-│   ├── arize.py          # ArizePlatform implementation
-│   └── mlflow.py         # MLflowPlatform implementation (skeleton)
-└── _internal/            # Shared internal utilities
-    └── telemetry.py      # Common telemetry helpers
+│   ├── config/
+│   │   ├── __init__.py
+│   │   └── load.py          # YAML loading, env var substitution
+│   ├── lifecycle.py         # Global state management
+│   └── pipeline.py          # Exporter dispatch, instrumentation
+├── exporters/
+│   ├── __init__.py
+│   ├── arize/
+│   │   ├── __init__.py
+│   │   └── exporter.py      # create_arize_provider()
+│   └── mlflow/
+│       ├── __init__.py
+│       └── exporter.py      # create_mlflow_provider()
+├── instrumentation/
+│   ├── __init__.py
+│   ├── _registry.py         # Instrumentor registry
+│   ├── google_adk.py        # instrument() wrapper
+│   └── google_genai.py      # instrument() wrapper
+├── eval/                    # RESERVED: Evaluation (future)
+│   └── (structure TBD)
+└── _internal/
+    ├── __init__.py
+    └── telemetry.py         # Shared utilities
 ```
 
-### 8.2 Platform Interface
+### 8.2 Exporter Factory Interface
 
-Each platform module must implement the Platform Protocol:
+Exporters are implemented as factory functions (not classes or protocols). Each exporter module provides a function that creates a configured TracerProvider.
 
 ```python
-from typing import Protocol
-
-class Platform(Protocol):
-    @property
-    def name(self) -> str:
-        """Platform identifier (e.g., 'arize', 'mlflow')."""
-        ...
-
-    @property
-    def config_section(self) -> str:
-        """Config file section name."""
-        ...
-
-    @property
-    def install_extra(self) -> str:
-        """pip extra name (e.g., 'arize' for pip install llmops[arize])."""
-        ...
-
-    def create_tracer_provider(self, config: LLMOpsConfig) -> TracerProvider:
-        """Create platform-specific TracerProvider."""
-        ...
-
-    def get_instrumentor_registry(self) -> list[tuple[str, str, str]]:
-        """Return list of (config_key, module_path, class_name) tuples."""
-        ...
+# Factory signature
+def create_{platform}_provider(config: Config) -> TracerProvider:
+    """Create platform-specific TracerProvider."""
+    ...
 ```
 
 ### 8.3 Config Schema
 
 ```yaml
 # llmops.yaml
+
+# Required: Platform selection
+platform: arize  # or "mlflow"
+
+# Required: Service identification
 service:
   name: "my-service"
-  version: "1.0.0"
+  version: "1.0.0"  # Optional
 
-# Arize-specific configuration (used by llmops.arize.instrument())
-# These fields map directly to arize.otel.register() parameters
+# Platform-specific sections (only matching platform is read)
 arize:
   endpoint: "http://localhost:6006/v1/traces"
   project_name: "my-project"
@@ -213,50 +214,48 @@ arize:
   space_id: "${ARIZE_SPACE_ID}"
   transport: "http"
   batch: true
-  log_to_console: false
-  verbose: false
 
-# MLflow-specific configuration (used by llmops.mlflow.instrument())
 mlflow:
   tracking_uri: "http://localhost:5001"
   experiment_name: "my-experiment"
 
-# Instrumentation settings (shared across platforms)
+# Auto-instrumentation configuration (list-based registry)
 instrumentation:
-  google_adk: true
-  google_genai: true
+  enabled:
+    - google_adk
+    - google_genai
 
-# Validation settings
+# Validation mode
 validation:
-  mode: permissive  # strict or permissive (default permissive)
+  mode: permissive  # or "strict"
 ```
 
 ---
 
 ## 9. Success Criteria
 
-- A greenfield application shows traces after calling `llmops.arize.instrument()`
+- A greenfield application shows traces after calling `llmops.init(config="llmops.yaml")` with `platform: arize`
 - No additional manual instrumentation is required for Google ADK or Google GenAI
-- Configuration can be set via `llmops.yaml` with optional env overrides
+- Configuration can be set via `llmops.yaml` with optional env var substitution
 - The import `import llmops` succeeds without any platform dependencies installed
-- `llmops.arize.instrument()` fails gracefully with helpful message if `arize-otel` is not installed
-- Adding MLflow skeleton requires:
-  1. New platform module in `_platforms/`
-  2. New public accessor module
+- `llmops.init()` with missing platform dependencies raises `ConfigurationError` with helpful message
+- Adding MLflow exporter requires:
+  1. New exporter module in `llmops/exporters/mlflow/`
+  2. Entry in exporter registry
   3. Optional dependencies in `pyproject.toml`
-  4. No changes to existing Arize code
+  4. No changes to public API or existing Arize exporter
 
 ---
 
 ## 10. User Stories
 
-### US1: Explicit Arize Instrumentation
+### US1: Config-Driven Arize Instrumentation
 
-> As a developer using Arize Phoenix, I want to call `llmops.arize.instrument()` so that my code clearly shows which observability platform I'm using.
+> As a developer using Arize Phoenix, I want to call `llmops.init()` with a config file so that platform selection is explicit in configuration.
 
 **Acceptance:**
 - `import llmops` succeeds without Arize dependencies
-- `llmops.arize.instrument(config_path="llmops.yaml")` initializes Arize telemetry
+- `llmops.init(config="llmops.yaml")` with `platform: arize` initializes Arize telemetry
 - Google ADK and Google GenAI calls are traced
 - Permissive validation falls back to a no-op tracer provider on config errors
 
@@ -265,9 +264,9 @@ validation:
 > As a developer, I want clear error messages when platform dependencies are missing so that I know exactly what to install.
 
 **Acceptance:**
-- `llmops.arize.instrument()` without `arize-otel` installed raises helpful error
+- `llmops.init()` with `platform: arize` without `arize-otel` installed raises `ConfigurationError`
 - Error message includes: `pip install llmops[arize]`
-- Error is raised at call time, not import time
+- Error is raised at init time, not import time
 
 ### US3: Multi-Environment Deployment
 
@@ -275,18 +274,18 @@ validation:
 
 **Acceptance:**
 - Config file can have both `arize:` and `mlflow:` sections
-- Each platform reads only its own section plus shared sections
-- Environment variable `LLMOPS_CONFIG_PATH` works identically across platforms
+- The `platform:` field determines which section is read
+- Environment variable `LLMOPS_CONFIG_PATH` works as fallback for config path
 
-### US4: Platform Extensibility (MLflow Skeleton)
+### US4: Exporter Extensibility (MLflow Skeleton)
 
-> As a platform maintainer, I want to add MLflow support without modifying the Arize implementation so that platforms are truly isolated.
+> As a platform maintainer, I want to add MLflow support without modifying the Arize implementation so that exporters are truly isolated.
 
 **Acceptance:**
-- New `llmops/mlflow.py` module added
-- New `llmops/_platforms/mlflow.py` implementation (skeleton)
+- New `llmops/exporters/mlflow/` module added
 - Arize tests continue to pass unchanged
-- `llmops.mlflow.instrument()` can be called (returns stub/no-op provider)
+- `llmops.init()` with `platform: mlflow` can be called (returns stub/no-op provider)
+- No changes to public API required
 
 ---
 
@@ -296,12 +295,12 @@ The following design decisions were made during architecture analysis:
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
-| Platform Registry Pattern | Static modules with lazy loading | Excellent IDE support, simple DX |
-| Instrumentation Interface | Protocol (not ABC) | Duck typing, easier testing, more Pythonic |
-| API Style | Namespaced only (`llmops.arize.instrument()`) | Single clear path, no ambiguity |
+| API Style | Single `init()` with config-driven platform | Better composability, smaller API surface |
+| Exporter Pattern | Factory functions (not Protocol) | Simpler, sufficient for internal use |
+| Instrumentor Pattern | Registry with list-based config | Avoids API churn as instrumentors are added |
 | Entry Points | Deferred | Not needed for POC, can add later |
-| Config Validation | Each platform validates its own section | Platform isolation |
-| Instrumentor Runner | Shared infrastructure | Reduces duplication, platforms provide registry |
+| Config Validation | Each exporter validates its own section | Exporter isolation |
+| Instrumentor Runner | Shared infrastructure | Reduces duplication, exporters share registry |
 | MLflow Scope | Skeleton/stub | Validates extensibility without full implementation |
 
 ---
@@ -330,13 +329,23 @@ The following design decisions were made during architecture analysis:
 | **Generic OTLP** | OpenInference or OTel GenAI instrumentors | Future |
 | **Datadog** | Datadog LLM Observability SDK | Future |
 
-### 13.2 Advanced Features (Out of Scope)
+### 13.2 Evaluation (Future)
+
+The SDK will support batch evaluation and CI regression testing via the reserved `llmops.eval` namespace. This will wrap Arize AX evaluation primitives with an SDK-first API.
+
+- Batch evaluation of spans against evaluators (LLM-as-judge, code evaluators)
+- CI regression testing with golden datasets
+- Programmatic-first API with optional CLI wrapper
+
+**Status:** Namespace reserved. Implementation deferred until Arize AX primitives are better understood.
+
+### 13.3 Advanced Features (Out of Scope)
 
 - Multi-backend routing (send to multiple platforms simultaneously)
 - Platform feature detection and capability querying
 - Runtime platform switching
 - Platform-specific manual instrumentation APIs
-- Entry point discovery for third-party platforms
+- Entry point discovery for third-party exporters
 
 ---
 

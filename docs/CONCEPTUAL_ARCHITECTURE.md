@@ -1,67 +1,75 @@
 # PRD_01 — Conceptual Architecture
 
 **Version:** 0.2
-**Date:** 2026-01-22
+**Date:** 2026-01-27
 **Status:** Draft
 
 ---
 
 ## 1. Overview
 
-This document describes the high-level shape of the PRD_01 system. It focuses on concepts and relationships, not implementation details. The system provides **platform-explicit auto-instrumentation** where users select their observability backend via namespaced API calls.
+This document describes the high-level shape of the PRD_01 system. It focuses on concepts and relationships, not implementation details. The system provides **config-driven auto-instrumentation** where users configure their observability backend via a YAML file or programmatic `Config` object.
 
-**Key Concept:** Platform selection is explicit in the API call (`llmops.<platform>.instrument()`), not hidden in configuration or auto-detected.
+**Key Concept:** A single `init()` entry point with configuration determining which backend, instrumentors, and behaviors are active. The public API is minimal and stable; complexity is hidden in internal layers.
 
 ---
 
 ## 2. Core Concept
 
-A platform-explicit initialization where:
-1. User selects a platform via namespaced import (`llmops.arize`, `llmops.mlflow`)
-2. Platform module handles backend-specific telemetry setup
-3. Shared infrastructure handles config loading and instrumentation
+A config-driven initialization where:
+1. User calls `llmops.init(config="llmops.yaml")`
+2. Config specifies `platform: arize` (or `mlflow`)
+3. SDK dispatches to the appropriate exporter factory
+4. Auto-instrumentation is applied based on config
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
 │                          APPLICATION CODE                                 │
 │                                                                          │
 │  import llmops                                                           │
-│  llmops.arize.instrument(config_path="llmops.yaml")  ───────────────┐    │
-│                                                                     │    │
-│  # Google ADK + Google GenAI calls are auto-traced                  │    │
-│                                                                     │    │
+│  llmops.init(config="llmops.yaml")  ──────────────────────────────┐      │
+│                                                                   │      │
+│  # Google ADK + Google GenAI calls are auto-traced                │      │
+│                                                                   │      │
 └──────────────────────────────────────────────────────────────────────────┘
-                                                                      │
-                                                                      ▼
+                                                                    │
+                                                                    ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
 │                          LLMOPS SDK                                       │
 │                                                                          │
 │  ┌────────────────────────────────────────────────────────────────────┐  │
-│  │                    PLATFORM LAYER (lazy-loaded)                    │  │
+│  │                      PUBLIC API LAYER (llmops/api/)                │  │
 │  │                                                                    │  │
-│  │   ┌─────────────┐   ┌─────────────┐   ┌─────────────┐             │  │
-│  │   │ llmops.arize│   │llmops.mlflow│   │ (future)    │             │  │
-│  │   │             │   │  (skeleton) │   │             │             │  │
-│  │   └──────┬──────┘   └──────┬──────┘   └──────┬──────┘             │  │
-│  │          │                 │                 │                    │  │
-│  └──────────┼─────────────────┼─────────────────┼────────────────────┘  │
-│             │                 │                 │                       │
-│             ▼                 ▼                 ▼                       │
+│  │   init()    shutdown()    is_configured()    Config types          │  │
+│  │                                                                    │  │
+│  └──────────────────────────────┬─────────────────────────────────────┘  │
+│                                 │                                        │
+│                                 ▼                                        │
 │  ┌────────────────────────────────────────────────────────────────────┐  │
-│  │                    SHARED INFRASTRUCTURE                           │  │
+│  │                      SDK LAYER (llmops/sdk/)                       │  │
 │  │                                                                    │  │
 │  │   ┌──────────────┐   ┌──────────────┐   ┌──────────────────────┐  │  │
-│  │   │ Config Loader│   │  Validation  │   │ Instrumentor Runner  │  │  │
-│  │   │ (path+env)   │   │(strict/perm) │   │ (registry-based)     │  │  │
+│  │   │ Config Loader│   │  Lifecycle   │   │ Pipeline Composition │  │  │
+│  │   │ (YAML + env) │   │  Management  │   │ (exporter dispatch)  │  │  │
 │  │   └──────────────┘   └──────────────┘   └──────────────────────┘  │  │
 │  │                                                                    │  │
-│  └────────────────────────────────────────────────────────────────────┘  │
+│  └──────────────────────────────┬─────────────────────────────────────┘  │
+│                                 │                                        │
+│             ┌───────────────────┼───────────────────┐                    │
+│             ▼                   ▼                   ▼                    │
+│  ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────────────┐    │
+│  │    EXPORTERS    │ │ INSTRUMENTATION │ │      _internal/         │    │
+│  │                 │ │                 │ │                         │    │
+│  │ arize/          │ │ google_adk.py   │ │ telemetry utilities     │    │
+│  │ mlflow/         │ │ google_genai.py │ │                         │    │
+│  │                 │ │ (registry)      │ │                         │    │
+│  └─────────────────┘ └─────────────────┘ └─────────────────────────┘    │
 │                                                                          │
 └──────────────────────────────────────────────────────────────────────────┘
-                              │
-          ┌───────────────────┼───────────────────┐
-          │                   │                   │
-          ▼                   ▼                   ▼
+                               │
+           ┌───────────────────┼───────────────────┐
+           │                   │                   │
+           ▼                   ▼                   ▼
 ┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐
 │  ARIZE BACKEND   │ │  MLFLOW BACKEND  │ │  FUTURE BACKEND  │
 │                  │ │    (skeleton)    │ │                  │
@@ -71,7 +79,7 @@ A platform-explicit initialization where:
 
 ---
 
-## 3. Primary Flow (Platform-Explicit Auto-Instrumentation)
+## 3. Primary Flow (Config-Driven Auto-Instrumentation)
 
 ```
 Application startup
@@ -80,88 +88,61 @@ Application startup
   import llmops
         │
         ▼
-  Access platform module (lazy-loaded)
-  llmops.arize ─────────────────────────────────────┐
-        │                                           │
-        │                              ┌────────────▼────────────┐
-        │                              │ Check platform deps     │
-        │                              │ (arize-otel installed?) │
-        │                              └────────────┬────────────┘
-        │                                           │
-        ▼                                           ▼
-  llmops.arize.instrument(config_path)    ImportError if missing
+  llmops.init(config="llmops.yaml")
         │
         ▼
-  Load config (shared infrastructure)
-        │
-        ▼
-  Extract platform section (arize:) + shared sections
-        │
-        ▼
-  Platform creates TracerProvider
-  (arize.otel.register for Arize)
-        │
-        ▼
-  Apply auto-instrumentation
-  (shared runner with platform's instrumentor registry)
-        │
-        ▼
-  Register atexit handler
-        │
-        ▼
-  Return TracerProvider
-        │
-        ▼
+  ┌─────────────────────────────────────┐
+  │         CONFIG LOADING              │
+  │                                     │
+  │  - Resolve path (arg or env var)    │
+  │  - Parse YAML                       │
+  │  - Substitute environment variables │
+  │  - Validate configuration           │
+  └──────────────────┬──────────────────┘
+                     │
+                     ▼
+  ┌─────────────────────────────────────┐
+  │       PLATFORM DISPATCH             │
+  │                                     │
+  │  Read `platform:` field from config │
+  │       │                             │
+  │       ├── "arize"  → Arize factory  │
+  │       └── "mlflow" → MLflow factory │
+  └──────────────────┬──────────────────┘
+                     │
+                     ▼
+  ┌─────────────────────────────────────┐
+  │      EXPORTER CREATION              │
+  │                                     │
+  │  Factory creates TracerProvider     │
+  │  (e.g., arize.otel.register())      │
+  │  Set as global tracer provider      │
+  └──────────────────┬──────────────────┘
+                     │
+                     ▼
+  ┌─────────────────────────────────────┐
+  │      AUTO-INSTRUMENTATION           │
+  │                                     │
+  │  Apply instrumentors from registry  │
+  │  based on `instrumentation.enabled` │
+  │  list in config                     │
+  └──────────────────┬──────────────────┘
+                     │
+                     ▼
+  ┌─────────────────────────────────────┐
+  │      LIFECYCLE SETUP                │
+  │                                     │
+  │  - Register atexit handler          │
+  │  - Mark SDK as configured           │
+  └──────────────────┬──────────────────┘
+                     │
+                     ▼
   GenAI spans exported to selected backend
 ```
 
 ---
 
-## 4. Platform Selection Flow
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     USER CODE                                    │
-│                                                                 │
-│   import llmops                                                 │
-│   llmops.arize.instrument()     # Explicit platform selection   │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                  LAZY MODULE LOADING                             │
-│                                                                 │
-│   llmops.__getattr__("arize")                                   │
-│       │                                                         │
-│       ▼                                                         │
-│   from llmops import arize  # Only now imported                 │
-│       │                                                         │
-│       ▼                                                         │
-│   Return arize module                                           │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                  PLATFORM MODULE                                 │
-│                                                                 │
-│   arize.instrument(config_path)                                 │
-│       │                                                         │
-│       ├──▶ Validate arize-otel is installed                     │
-│       │                                                         │
-│       ├──▶ Load config, extract arize: section                  │
-│       │                                                         │
-│       ├──▶ Call arize.otel.register(...)                        │
-│       │                                                         │
-│       └──▶ Apply instrumentors via shared runner                │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 5. Configuration Flow
+## 4. Configuration Flow
 
 ```
 ┌──────────────────┐     ┌─────────────────────────────────────────┐
@@ -170,59 +151,49 @@ Application startup
                          │  - Resolves path (arg or env var)       │
 ┌──────────────────┐     │  - Parses YAML                          │
 │ LLMOPS_CONFIG    │────▶│  - Substitutes env vars                 │
-│ _PATH env var    │     │  - Returns raw config dict              │
+│ _PATH env var    │     │  - Returns Config object                │
 └──────────────────┘     └──────────────────┬──────────────────────┘
                                             │
                                             ▼
                          ┌─────────────────────────────────────────┐
-                         │        PLATFORM-SPECIFIC PARSING        │
+                         │          PLATFORM DISPATCH              │
                          │                                         │
-                         │  Platform extracts its section:         │
-                         │  - arize: → ArizePlatform               │
-                         │  - mlflow: → MLflowPlatform             │
+                         │  `platform:` field determines exporter: │
+                         │  - "arize" → llmops/exporters/arize/    │
+                         │  - "mlflow" → llmops/exporters/mlflow/  │
                          │                                         │
-                         │  Plus shared sections:                  │
+                         │  Shared sections used by all platforms: │
                          │  - service:                             │
                          │  - instrumentation:                     │
                          │  - validation:                          │
-                         └──────────────────┬──────────────────────┘
-                                            │
-                                            ▼
-                         ┌─────────────────────────────────────────┐
-                         │          VALIDATED CONFIG               │
-                         │                                         │
-                         │  LLMOpsConfig(                          │
-                         │    service=ServiceConfig(...),          │
-                         │    arize=ArizeConfig(...),  # or mlflow │
-                         │    instrumentation=...,                 │
-                         │    validation=...,                      │
-                         │  )                                      │
                          └─────────────────────────────────────────┘
 ```
 
 ---
 
-## 6. Key Invariants
+## 5. Key Invariants
 
 1. **Telemetry never breaks business logic.**
    - All SDK failures are caught and logged
-   - No exceptions propagate to user code after initialization
+   - No exceptions propagate to user code after initialization (in permissive mode)
 
-2. **Platform selection is explicit.**
-   - Users must call `llmops.<platform>.instrument()`
+2. **Platform selection is explicit in configuration.**
+   - The `platform:` field must be specified in config
    - No auto-detection or implicit platform selection
+   - Platform name is visible in configuration, not hidden in code
 
-3. **Platform modules are lazy-loaded.**
+3. **Exporter dependencies are lazy-loaded.**
    - `import llmops` does not import platform dependencies
-   - Platform deps only loaded when platform is accessed
+   - Exporter modules loaded only when `init()` dispatches to them
+   - Missing dependencies raise `ConfigurationError` at init time
 
-4. **Each platform instrument() call configures exactly one backend.**
-   - Single tracer provider per invocation
+4. **Each init() call configures exactly one backend.**
+   - Single TracerProvider per invocation
    - No multi-backend routing within a single call
 
-5. **Platforms are isolated.**
-   - Adding a new platform doesn't modify existing platforms
-   - Each platform owns its telemetry setup logic
+5. **Exporters are isolated.**
+   - Adding a new exporter doesn't modify existing exporters
+   - Each exporter owns its TracerProvider creation logic
 
 6. **Configuration is file-first with explicit path selection.**
    - Config path via argument or `LLMOPS_CONFIG_PATH`
@@ -230,87 +201,79 @@ Application startup
 
 ---
 
-## 7. Separation of Responsibilities
+## 6. Separation of Responsibilities
 
 | Component | Responsibility |
 |-----------|----------------|
-| **Application code** | Calls `llmops.<platform>.instrument()` and runs business logic |
-| **Package root (`__init__.py`)** | Lazy-loads platform modules on first access via `__getattr__` |
-| **Platform module** | Validates deps, exposes `instrument()` entry point |
-| **Platform implementation** | Creates platform-specific TracerProvider, defines instrumentor registry |
-| **Shared config loader** | Resolves file path, parses YAML, substitutes env vars |
-| **Platform config parser** | Extracts platform-specific section, validates fields |
-| **Instrumentor runner** | Applies auto-instrumentation from platform's registry |
+| **Application code** | Calls `llmops.init()` and runs business logic |
+| **Public API (`llmops/api/`)** | Stable interface: `init()`, `shutdown()`, `is_configured()`, `Config` types |
+| **SDK layer (`llmops/sdk/`)** | Config loading, lifecycle management, pipeline composition |
+| **Exporters (`llmops/exporters/`)** | Platform-specific TracerProvider creation |
+| **Instrumentation (`llmops/instrumentation/`)** | Auto-instrumentation wrappers and registry |
+| **Config loader** | Resolves file path, parses YAML, substitutes env vars |
+| **Pipeline composition** | Dispatches to exporter factory, applies instrumentors |
 
 ---
 
-## 8. Extension Points
+## 7. Extension Points
 
-### 8.1 Platform Registry (Conceptual)
+### 7.1 Exporter Registry
 
 ```
-Platform Registry
-├── arize      → OpenInference instrumentors, arize.otel.register
-├── mlflow     → MLflow autolog (skeleton)
+Exporter Registry (in pipeline.py)
+├── arize      → llmops/exporters/arize/exporter.py
+├── mlflow     → llmops/exporters/mlflow/exporter.py (skeleton)
 └── (future)   → Additional backends
 ```
 
-New platforms are added by:
-1. Creating a new platform implementation (`llmops/_platforms/<platform>.py`)
-2. Creating a public module (`llmops/<platform>.py`)
-3. Adding lazy accessor in `llmops/__init__.py`
+New exporters are added by:
+1. Creating exporter module in `llmops/exporters/{name}/`
+2. Implementing factory function: `create_{name}_provider(config) -> TracerProvider`
+3. Registering in exporter dispatch dictionary
 4. Adding optional dependencies in `pyproject.toml`
 
-**Key invariant:** Adding a new platform requires no changes to existing platform code.
+**Key invariant:** Adding a new exporter requires no changes to `llmops/api/` or existing exporters.
 
-### 8.2 Instrumentor Registry (Per Platform)
+### 7.2 Instrumentor Registry
 
 ```
-Arize Instrumentor Registry
-├── google_adk    → GoogleADKInstrumentor (enabled by default)
-├── google_genai  → GoogleGenAIInstrumentor (enabled by default)
-└── (future)      → OpenAIInstrumentor, etc.
-
-MLflow Instrumentor Registry (skeleton)
-├── gemini        → mlflow.gemini.autolog()
-└── openai        → mlflow.openai.autolog()
+Instrumentor Registry
+├── google_adk    → GoogleADKInstrumentor wrapper
+├── google_genai  → GoogleGenAIInstrumentor wrapper
+├── openai        → (future) OpenAIInstrumentor
+├── anthropic     → (future) AnthropicInstrumentor
+└── ...
 ```
 
-Each platform defines its own instrumentor registry. The `instrumentation:` config section is shared, but availability depends on the platform.
+Instrumentors are managed via a central registry. Configuration specifies which instrumentors to enable via a list, not individual boolean fields:
+
+```yaml
+instrumentation:
+  enabled:
+    - google_adk
+    - google_genai
+```
+
+New instrumentors are added by:
+1. Creating wrapper module in `llmops/instrumentation/{name}.py`
+2. Registering in the instrumentor registry
+3. No changes to public API types required
+
+### 7.3 Evaluator Registry (Future)
+
+Reserved extension point. Will follow the same registry pattern as instrumentors.
 
 ---
 
-## 9. Platform Interface (Conceptual)
-
-All platforms implement the same interface (Protocol):
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     Platform Protocol                            │
-├─────────────────────────────────────────────────────────────────┤
-│  name: str              # "arize", "mlflow", etc.               │
-│  config_section: str    # YAML section name                     │
-│  install_extra: str     # pip extra name                        │
-├─────────────────────────────────────────────────────────────────┤
-│  create_tracer_provider(config) -> TracerProvider               │
-│  get_instrumentor_registry() -> list[...]                       │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-This ensures consistent behavior across all platforms while allowing platform-specific implementation details.
-
----
-
-## 10. Related Documents
+## 8. Related Documents
 
 | Document | Purpose |
 |----------|---------|
 | `docs/prd/PRD_01.md` | Requirements and success criteria |
 | `docs/reference_architecture/REFERENCE_ARCHITECTURE_01.md` | Architectural patterns and invariants |
-| `docs/api_spec/API_SPEC_01.md` | Public interfaces and configuration contracts |
-| `docs/analysis/PLATFORM_ARCHITECTURE_ANALYSIS.md` | Analysis of architectural options |
+| `docs/DESIGN_PHILOSOPHY.md` | Design principles and API stability rules |
 
 ---
 
 **Document Owner:** Platform Team
-**Last Updated:** 2026-01-22
+**Last Updated:** 2026-01-27
