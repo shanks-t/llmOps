@@ -67,33 +67,3 @@ ignore_missing_imports = true
 
 [dependency-groups]
 dev = ["bandit>=1.9.2", "mypy>=1.19.1", "ruff>=0.14.11", "types-PyYAML>=6.0.0"]
-
-# =============================================================================
-# Hatch Environments (for pre-commit hooks and CI)
-# =============================================================================
-# These environments are used by pre-commit and CI pipelines.
-# For local development, use `just` recipes which use UV directly.
-# Both approaches use the same tool versions for consistency.
-
-[tool.hatch.envs.lint]
-description = "Static analysis: linting, type checking, security scanning"
-detached = true
-installer = "uv"
-dependencies = [
-    "ruff>=0.14.11",
-    "mypy>=1.19.1",
-    "bandit>=1.9.2",
-    "types-PyYAML>=6.0.0",
-]
-
-[tool.hatch.envs.lint.scripts]
-check = "ruff check src/ tests/"
-format-check = "ruff format --check src/ tests/"
-typing = "mypy src/ tests/"
-security = "bandit -r src/ tests/ -s B101"
-# Combined check for pre-commit (runs all in sequence)
-all = ["check", "typing", "security"]
-
-# Auto-fix scripts (not used by pre-commit, but available for developers/CI)
-fmt = "ruff format src/ tests/"
-fix = "ruff check --fix src/ tests/"
