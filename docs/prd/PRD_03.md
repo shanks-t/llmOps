@@ -1,40 +1,38 @@
-# PRD_03 — LLM-as-a-Judge Evaluator Templates
+# PRD_03 — LLM-as-a-Judge Templates and AX Evaluation Runs
 
-**Version:** 0.2  
-**Date:** 2026-01-27  
-**Status:** Draft  
+**Version:** 0.4
+**Date:** 2026-01-28
+**Status:** Draft
 **Depends on:** PRD_01 (Config-Driven Auto-Instrumentation SDK)
 
 ---
 
 ## 1. Problem Statement
 
-GenAI applications require consistent, scalable evaluation capabilities to validate LLM outputs. Currently, developers face several challenges:
+Teams need consistent, reusable evaluation templates and a reliable way to run them against telemetry already stored in Arize AX. Today:
 
-1. **No standard evaluation patterns** — Each project implements evaluation logic from scratch, leading to inconsistent practices across teams.
-
-2. **Boilerplate overhead** — Using libraries like `arize-phoenix-evals` directly requires repetitive setup code for each evaluator.
-
-3. **No reusability mechanism** — Custom evaluation templates cannot be easily shared or reused within or across projects.
-
-4. **Evaluation-telemetry gap** — While PRD_01 establishes tracing infrastructure, there's no SDK-level support for evaluating LLM outputs.
+1. **No standard template workflow** — Each team re-creates LLM-as-a-judge prompts and scoring logic.
+2. **Boilerplate to operationalize evals** — Developers must stitch together template creation, backend storage, and execution.
+3. **No SDK flow for telemetry subsets** — There is no simple SDK API to evaluate specific slices of AX telemetry.
 
 We need an SDK feature that:
-- Provides pre-built evaluation templates for common use cases (starting with Faithfulness/hallucination detection)
-- Offers factory functions for creating custom LLM-as-a-judge evaluators
-- Enables template registration for project-wide reuse
-- Uses the reserved `llmops.eval` namespace established in the Design Philosophy
+- Enables creation of LLM-as-a-judge evaluator templates
+- Persists templates to Arize AX Evaluator Hub
+- Retrieves templates for reuse
+- Runs evaluations on **filtered subsets of AX telemetry**
+- Supports both **online tasks** and **on-demand runs**
 
 ---
 
 ## 2. Product Vision
 
-A **platform-agnostic evaluation API** (`llmops.eval`) where:
+`llmops.eval` provides a platform-agnostic SDK surface that uses Arize AX under the hood to:
 
-1. Users access built-in templates for common evaluations with one function call
-2. Factory functions create custom evaluators with minimal boilerplate
-3. An in-memory registry enables named template storage and retrieval
-4. The API mirrors Phoenix Evals patterns for developer familiarity
+1. Create evaluator templates with minimal boilerplate
+2. Save templates to the Arize AX Evaluator Hub
+3. Retrieve and use templates across teams
+4. Run evaluations on filtered telemetry subsets in AX
+5. Support **online tasks** (continuous) and **on-demand runs** (one-time)
 
 ### API Design
 
@@ -42,38 +40,59 @@ A **platform-agnostic evaluation API** (`llmops.eval`) where:
 import llmops
 from phoenix.evals.llm import LLM
 
-# Configure LLM (user responsibility)
+llmops.eval.init(config="llmops.yaml")
 llm = LLM(provider="openai", model="gpt-4o")
 
-# Built-in template: Faithfulness evaluation
-faithfulness = llmops.eval.faithfulness(llm=llm)
-scores = faithfulness.evaluate({
-    "input": "What is the capital of France?",
-    "output": "Paris is the capital of France.",
-    "context": "Paris is the capital and largest city of France."
-})
-
-# Custom evaluator via factory
+# Create and push a custom template
 tone_eval = llmops.eval.create_classifier(
-    name="tone_check",
+    name="professional_tone",
     prompt_template="Is the response professional? Response: {output}",
     llm=llm,
     choices={"professional": 1.0, "unprofessional": 0.0},
 )
+llmops.eval.push("professional_tone", tone_eval)
 
-# Register for project-wide reuse
-llmops.eval.register("tone_check", tone_eval)
-
-# Retrieve registered evaluator
-eval_ref = llmops.eval.get("tone_check")
-scores = eval_ref.evaluate({"output": "Hello, how can I assist you today?"})
+# Pull a template and use it locally
+eval_ref = llmops.eval.pull("professional_tone", llm=llm)
+scores = eval_ref.evaluate({"output": "Hello, how can I help?"})
 ```
 
-The SDK provides:
-- Platform-agnostic `eval` namespace (as reserved in Design Philosophy)
-- Built-in Faithfulness template from Phoenix Evals
-- Factory function wrapping `phoenix.evals.create_classifier`
-- Simple in-memory registry for named template storage
+### Telemetry Subset Filter
+
+```python
+telemetry_filter = {
+    "space_id": "space_123",
+    "model_id": "model_456",
+    "environment": "TRACING",
+    "time_range": {
+        "start": "2026-01-01T00:00:00Z",
+        "end": "2026-01-31T00:00:00Z",
+    },
+    "query": "span.kind == 'llm' and attributes.llm.provider == 'openai'",
+}
+```
+
+### Online Task (Continuous Evaluation)
+
+```python
+task = llmops.eval.run_online(
+    template="professional_tone",
+    filter=telemetry_filter,
+    llm=llm,
+)
+```
+
+### On-Demand Run (Annotate Existing Telemetry)
+
+```python
+summary = llmops.eval.run(
+    template="professional_tone",
+    filter=telemetry_filter,
+    llm=llm,
+)
+
+# summary includes counts and task_id
+```
 
 ---
 
@@ -81,14 +100,14 @@ The SDK provides:
 
 ### Primary Persona
 
-**ML Engineer evaluating GenAI outputs** who wants to:
-- Quickly set up LLM-as-a-judge evaluation for common use cases
-- Create custom evaluation criteria without learning low-level APIs
-- Reuse evaluation templates across different parts of their project
+**ML Engineer using Arize AX** who wants to:
+- Create LLM-as-a-judge templates without low-level API work
+- Persist templates for team reuse
+- Evaluate subsets of telemetry in AX
 
 ### Non-Target Persona
 
-- **Production evaluation pipeline builder** — This PRD focuses on SDK-level primitives, not production-grade evaluation infrastructure (future work)
+- **Local-only or OSS evaluation users** — This PRD focuses on AX-backed workflows
 
 ---
 
@@ -96,23 +115,25 @@ The SDK provides:
 
 | ID | Goal | Priority |
 |----|------|----------|
-| G1 | Provide pre-built Faithfulness evaluator template | Must |
-| G2 | Factory function for custom LLM-as-a-judge evaluators | Must |
-| G3 | In-memory registry for named template storage/retrieval | Must |
-| G4 | Lazy-load eval module (no import-time deps) | Must |
-| G5 | Platform-agnostic evaluation primitives | Must |
-| G6 | Align with reserved `llmops.eval` namespace from Design Philosophy | Should |
+| G1 | Create LLM-as-a-judge templates programmatically | Must |
+| G2 | Persist templates in Arize AX Evaluator Hub | Must |
+| G3 | Retrieve templates by name | Must |
+| G4 | List available templates in AX | Should |
+| G5 | Run online evaluation tasks on filtered telemetry | Must |
+| G6 | Run on-demand evaluations that annotate existing telemetry | Must |
+| G7 | Support filter object for selecting telemetry subsets | Must |
+| G8 | Lazy-load eval module and deps | Must |
+| G9 | Keep API in `llmops.eval` namespace | Should |
 
 ---
 
 ## 5. Non-Goals
 
-- **Telemetry integration** — Running evaluations on exported spans or logging results as annotations is out of scope (future PRD)
-- **Multiple built-in templates** — Only Faithfulness is included; additional templates (Relevance, Toxicity, etc.) are future work
-- **Persistent registry** — Backend-stored template storage is out of scope
-- **Code-based evaluators** — Non-LLM evaluators are out of scope
-- **DataFrame batch evaluation** — Focus is on single-record evaluation API
-- **Config-driven LLM** — LLM configuration in llmops.yaml is future work
+- In-memory or local template registries
+- Phoenix OSS or non-AX backends
+- Telemetry collection or tracing (owned by PRD_01)
+- Template versioning in this release
+- Standalone local-only evaluation without AX export/logging
 
 ---
 
@@ -122,8 +143,9 @@ The SDK provides:
 |------------|-----------|
 | Python >=3.13 | Matches repo baseline from PRD_01 |
 | `arize-phoenix-evals>=2.0.0` dependency | Core evaluation functionality |
-| LLM configuration is user-provided | Avoids SDK responsibility for API keys/models |
-| Lazy loading required | Avoid importing deps until accessed |
+| AX backend required for persistence and runs | Scope is AX-only |
+| LLM configuration is user-provided | Avoid SDK responsibility for API keys/models |
+| Lazy loading required | Avoid import-time dependency errors |
 | Uses reserved `llmops.eval` namespace | Aligns with Design Philosophy |
 
 ---
@@ -134,231 +156,125 @@ The SDK provides:
 
 | ID | Requirement | Priority |
 |----|-------------|----------|
-| F1 | `llmops.eval.faithfulness(llm)` returns configured evaluator | Must |
-| F2 | `llmops.eval.create_classifier(...)` creates custom evaluator | Must |
-| F3 | `llmops.eval.register(name, evaluator)` stores evaluator by name | Must |
-| F4 | `llmops.eval.get(name)` retrieves registered evaluator | Must |
-| F5 | `llmops.eval.list()` returns names of registered evaluators | Should |
-| F6 | `evaluator.evaluate(input_dict)` returns list of Score objects | Must |
-| F7 | Eval module is lazy-loaded on first access | Must |
-| F8 | Missing deps raise `ImportError` with helpful message | Must |
-| F9 | Registry raises `KeyError` for unregistered names | Should |
-| F10 | `llmops.eval.clear()` clears registry (for testing) | Should |
+| F1 | `llmops.eval.init(config)` initializes eval auth for AX operations | Must |
+| F2 | `llmops.eval.create_classifier(...)` creates a template evaluator | Must |
+| F3 | `llmops.eval.push(name, evaluator)` saves template to AX Evaluator Hub | Must |
+| F4 | `llmops.eval.pull(name, llm)` retrieves template from AX | Must |
+| F5 | `llmops.eval.list_remote()` lists available AX templates | Should |
+| F6 | `llmops.eval.run_online(...)` creates an online task in AX | Must |
+| F7 | `llmops.eval.run(...)` runs an on-demand evaluation in AX | Must |
+| F8 | On-demand runs annotate existing telemetry in AX | Must |
+| F9 | On-demand runs return a minimal summary (counts, task_id) | Must |
+| F10 | Filter object selects telemetry subset for run/task | Must |
+| F11 | Missing deps raise `ImportError` with install guidance | Must |
+
+**Filter object requirements (F10):**
+- Includes `space_id`, `model_id`, `environment`
+- Supports a `time_range` (start/end ISO-8601)
+- Supports a `query` string for attribute filtering
 
 ### 7.2 Non-Functional Requirements
 
 | ID | Requirement | Priority |
 |----|-------------|----------|
-| N1 | `import llmops` succeeds without `arize-phoenix-evals` | Must |
+| N1 | `import llmops` succeeds without eval deps installed | Must |
 | N2 | Error messages include installation instructions | Must |
-| N3 | Built-in templates use Phoenix Evals benchmarked prompts | Must |
-| N4 | Registry is thread-safe for concurrent access | Should |
-| N5 | Evaluation errors are catchable (don't crash calling code) | Should |
+| N3 | Backend operations timeout with clear errors | Should |
+| N4 | Error handling is catchable (no hard crashes) | Should |
 
 ---
 
-## 8. Architecture
+## 8. Architecture (High-Level)
 
 ### 8.1 Package Structure
 
 ```
 llmops/
 ├── __init__.py              # Re-exports eval namespace
-├── eval/                    # NEW: Evaluation module
-│   ├── __init__.py          # Public API: faithfulness, create_classifier, etc.
-│   ├── _registry.py         # In-memory evaluator registry
-│   └── templates/
-│       ├── __init__.py
-│       └── faithfulness.py  # Built-in Faithfulness template
-└── ...                      # Other modules unchanged
+├── eval/                    # Evaluation module
+│   ├── __init__.py          # Public API: create_classifier, push, pull, run
+│   └── templates/           # Built-in templates (future)
+└── ...
 ```
 
-### 8.2 Module Loading Pattern
+### 8.2 AX Integration (Conceptual)
 
-```
-User Code: llmops.eval.faithfulness(llm)
-                │
-                ▼
-llmops (package)
-                │
-                ├─▶ __getattr__("eval") triggered
-                │
-                ▼
-from llmops import eval as _eval_module
-                │
-                ├─▶ llmops/eval/__init__.py
-                │     └─▶ check_dependencies()
-                │           - Imports phoenix.evals
-                │           - Raises ImportError if missing
-                │
-                ▼
-Return _eval_module
-                │
-                ▼
-_eval_module.faithfulness(llm)
-                │
-                ├─▶ Creates FaithfulnessEvaluator from phoenix.evals
-                └─▶ Returns configured evaluator
-```
+- **Template storage:** Arize AX Evaluator Hub
+- **Online tasks:** AX task API creates continuous evaluations over filtered telemetry
+- **On-demand runs:** AX evaluation run API evaluates a filtered telemetry subset and writes results back as annotations
 
-### 8.3 Registry Design
+The SDK maps the filter object to the AX query filter for both run modes.
 
-The in-memory registry provides named storage for evaluator instances within a running process.
+### 8.3 Auth and Init
 
-#### Interface
+- `llmops.init()` remains dedicated to telemetry and auto-instrumentation (PRD_01)
+- `llmops.eval.init()` establishes auth and context required for AX evaluation operations
+- Eval workflows do not require telemetry instrumentation
 
-```python
-def register(name: str, evaluator: Evaluator) -> None:
-    """
-    Register an evaluator by name. Overwrites if name exists.
-    
-    Args:
-        name: Unique identifier for the evaluator
-        evaluator: Any evaluator instance (built-in or custom)
-    """
+### 8.4 Local Evaluation Pipeline (Export → Evaluate → Log)
 
-def get(name: str) -> Evaluator:
-    """
-    Retrieve a registered evaluator.
-    
-    Raises:
-        KeyError: If name is not registered
-    """
+In addition to backend runs, the SDK supports a local evaluation workflow for offline analysis:
 
-def list() -> list[str]:
-    """List all registered evaluator names."""
+1. **Export telemetry to DataFrame** from AX
+2. **Map columns** to the evaluator schema (`input`, `output`, `context`, `span_id`)
+3. **Run evals locally** using Phoenix evals or `llmops.eval.create_classifier`
+4. **Log results back** to AX/Phoenix for visualization
 
-def clear() -> None:
-    """Clear all registered evaluators. Primarily for testing."""
-```
-
-#### Characteristics
-
-| Characteristic | Value |
-|----------------|-------|
-| Storage | `dict[str, Evaluator]` |
-| Thread safety | `threading.Lock` for all operations |
-| Duplicate handling | Overwrites existing (no error) |
-| Missing key | Raises `KeyError` |
-| Persistence | None (process-local only) |
-| Scope | Global within `llmops.eval` module |
-
-#### Lifecycle
-
-```
-Process Start
-     │
-     ▼
-Application startup (e.g., main.py, app.py)
-     │
-     ├─▶ register("hallucination", faithfulness(llm))
-     ├─▶ register("tone_check", create_classifier(...))
-     └─▶ register("relevance", create_classifier(...))
-     │
-     ▼
-Application runs
-     │
-     ├─▶ service_a.py: get("hallucination").evaluate(...)
-     ├─▶ service_b.py: get("tone_check").evaluate(...)
-     └─▶ tests.py: get("relevance").evaluate(...)
-     │
-     ▼
-Process End → Registry contents lost
-```
-
-#### When the Registry Is Useful
-
-| Scenario | Useful? | Why |
-|----------|---------|-----|
-| Long-running service | Yes | Register once, use throughout request lifecycle |
-| Jupyter notebook | Yes | Define evals once, reuse across cells |
-| Multi-module project | Yes | Centralized definition, use by name anywhere |
-| CLI tool (short-lived) | Marginal | Consider using factory directly |
-| Serverless | Marginal | Cold starts require re-registration |
-
-### 8.4 Dependencies
-
-| Dependency | Required For | Installation |
-|------------|--------------|--------------|
-| `arize-phoenix-evals>=2.0.0` | Core evaluation functionality | `pip install llmops[eval]` |
-| LLM provider SDK (openai, etc.) | LLM execution | User responsibility |
-
-### 8.5 Configuration Relationship
-
-For PRD_03, evaluations are **independent of `llmops.yaml`**:
-
-| Aspect | Relationship |
-|--------|-------------|
-| LLM configuration | User-provided at call time (not from config) |
-| Eval-specific config | None in this PRD |
-| Telemetry config | Separate concern; `init()` and eval are independent |
-
-**Rationale:**
-- LLM credentials are sensitive; avoid config file exposure
-- LLM choice may vary per evaluator (cost vs. accuracy)
-- Simpler initial scope
-
-**Future direction** (not in PRD_03):
-```yaml
-# Potential future llmops.yaml addition
-evaluation:
-  default_llm:
-    provider: "openai"
-    model: "gpt-4o-mini"
-```
+Local evaluation is distinct from backend annotation runs: it is client-side, uses exported data, and then writes results back.
 
 ---
 
 ## 9. Success Criteria
 
-- A user can evaluate LLM outputs using the built-in Faithfulness template in under 5 lines of code
-- Custom evaluators can be created using `create_classifier()`
-- Registered evaluators can be retrieved by name in different modules
-- `import llmops` succeeds without `arize-phoenix-evals` installed
-- `llmops.eval.faithfulness()` raises helpful error if deps missing
-- Registry maintains evaluators correctly across multiple uses
+- Create + push a template in under 10 lines of code
+- Create an online evaluation task with a filter in under 10 lines of code
+- Run an on-demand evaluation that annotates telemetry and returns a summary
+- Export telemetry, run local evals, and log results back in one script
+- `import llmops` succeeds without eval dependencies installed
 
 ---
 
 ## 10. User Stories
 
-### US1: Built-in Faithfulness Evaluation
+### US1: Create and Push Template
 
-> As an ML engineer, I want to quickly check if my RAG application's outputs are grounded in the retrieved context, so that I can detect hallucinations.
-
-**Acceptance:**
-- `llmops.eval.faithfulness(llm=llm)` returns a configured evaluator
-- Evaluator accepts `{input, output, context}` dict
-- Returns Score with label (`faithful`/`unfaithful`) and numeric score (1.0/0.0)
-- Uses Phoenix Evals benchmarked prompt (93% precision on HaluEval)
-
-### US2: Custom Evaluator Creation
-
-> As an ML engineer, I want to create a custom evaluation template for my specific use case (e.g., tone checking), so that I can measure what matters for my application.
+> As an ML engineer, I want to create a custom evaluator and save it to AX so my team can reuse it.
 
 **Acceptance:**
-- `create_classifier()` accepts name, prompt_template, llm, and choices
-- Prompt template supports `{variable}` placeholders
-- Created evaluator can be used immediately
-- Returns Score objects with label, score, and explanation
+- `create_classifier()` accepts name, prompt_template, llm, choices
+- `push()` stores the template in the Evaluator Hub
+- Requires `llmops.eval.init()` with Arize config
 
-### US3: Template Reuse via Registry
+### US2: Online Task on Telemetry Subset
 
-> As an ML engineer working on a large project, I want to register evaluation templates by name so that I can use them consistently across different modules without recreating them.
-
-**Acceptance:**
-- `register(name, evaluator)` stores evaluator
-- `get(name)` retrieves the same evaluator instance
-- `list()` returns all registered names
-- `KeyError` raised for unregistered names
-
-### US4: Dependency Error Handling
-
-> As a developer setting up the SDK, I want clear error messages when dependencies are missing so that I know what to install.
+> As an ML engineer, I want to continuously evaluate a subset of telemetry in AX.
 
 **Acceptance:**
-- `llmops.eval.faithfulness()` without `arize-phoenix-evals` raises error
-- Error message includes: `pip install llmops[eval]`
+- `run_online()` accepts a template name, filter object, and LLM
+- Creates an AX online task for that subset
+
+### US3: On-Demand Run with Annotation
+
+> As an ML engineer, I want to run a one-time evaluation over a subset of telemetry and annotate the results in AX.
+
+**Acceptance:**
+- `run()` accepts a template name, filter object, and LLM
+- Results are written back to AX
+- Returns a summary with counts and task_id
+
+### US4: Discover Templates
+
+> As an ML engineer, I want to list available templates in AX.
+
+**Acceptance:**
+- `list_remote()` returns available template names
+
+### US5: Dependency Error Handling
+
+> As a developer, I want clear error messages when eval dependencies are missing.
+
+**Acceptance:**
+- Errors include: `pip install llmops[eval]`
 - Error is raised at usage time, not import time
 
 ---
@@ -367,13 +283,12 @@ evaluation:
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
-| API location | `llmops.eval` | Aligns with reserved namespace in Design Philosophy |
-| Platform-agnostic | Yes | Evaluation primitives are reusable; backend integration is separate concern |
-| Registry scope | In-memory, process-local | Simplest first step; persistent is future |
-| Built-in templates | Faithfulness only | Start with most common use case |
-| LLM configuration | User-provided | Avoid SDK credential responsibility |
-| Loading strategy | Lazy on first access | Match PRD_01 pattern |
-| Underlying library | `arize-phoenix-evals` | Battle-tested, benchmarked prompts |
+| API location | `llmops.eval` | Reserved namespace and clear separation |
+| Template storage | Arize AX Evaluator Hub | Centralized, shareable, managed |
+| Execution modes | Online tasks + on-demand runs | Supports continuous and ad-hoc evaluation |
+| On-demand behavior | Write back to AX + return summary | Matches telemetry-annotation goal |
+| Telemetry selection | Filter object | Explicit and backend-aligned |
+| Auth surface | `llmops.eval.init()` | Separate from telemetry init |
 
 ---
 
@@ -381,42 +296,20 @@ evaluation:
 
 | # | Question | Status |
 |---|----------|--------|
-| 1 | Should `register()` warn on overwrite? | Open |
-| 2 | Should we expose `evaluate_dataframe()` for batch? | Deferred to future PRD |
-| 3 | Thread-local vs global registry option? | Resolved: Global with lock |
+| 1 | Query language for `filter.query` (AX DSL vs OpenInference expressions)? | Open |
+| 2 | Naming conventions for templates (namespaces, prefixes)? | Open |
+| 3 | How to handle partial failures in large on-demand runs? | Open |
+| 4 | Result schema for returned summary (counts, durations, ids)? | Open |
 
 ---
 
 ## 13. Future Considerations
 
-### 13.1 Additional Built-in Templates
-
-| Template | Use Case | Priority |
-|----------|----------|----------|
-| Document Relevance | RAG retrieval quality | High |
-| Correctness | Q&A accuracy | High |
-| Toxicity | Safety/content moderation | Medium |
-| Tool Calling | Agent tool selection | Medium |
-
-### 13.2 Telemetry Integration (Future PRD)
-
-- Export spans from configured backend (via `init()`)
-- Run evaluators on exported data
-- Log evaluation results as span annotations
-- `llmops.eval.run(...)` API for batch evaluation
-
-### 13.3 Persistent Registry (Future PRD)
-
-- Store templates in backend
-- Cross-project template sharing
-- Template versioning
-
-### 13.4 Config-Driven LLM (Future PRD)
-
-- Default LLM settings in `llmops.yaml` under `evaluation:` section
-- Override at call time if needed
+- Additional built-in templates (relevance, toxicity, redundancy)
+- Template versioning and metadata fields
+- SDK helpers for common filter presets
 
 ---
 
-**Document Owner:** Platform Team  
-**Last Updated:** 2026-01-27
+**Document Owner:** Platform Team
+**Last Updated:** 2026-01-28

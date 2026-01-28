@@ -358,7 +358,7 @@ The SDK provides two instrumentation modes that can be used independently or tog
 import llmops
 
 # Enable auto-instrumentation for all LLM library calls
-llmops.init()
+llmops.instrument()
 
 # Add manual instrumentation for custom business logic
 @llmops.agent(name="research-agent")

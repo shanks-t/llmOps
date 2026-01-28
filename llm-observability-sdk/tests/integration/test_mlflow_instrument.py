@@ -3,9 +3,9 @@
 Tests derived from PRD_01.
 
 Requirements covered:
-- F1: llmops.init(config) initializes the SDK
-- F6: init() requires an explicit config path (arg or env var)
-- F7: init() accepts llmops.yaml (preferred) and llmops.yml (supported)
+- F1: llmops.instrument(config) initializes the SDK
+- F6: instrument() requires an explicit config path (arg or env var)
+- F7: instrument() accepts llmops.yaml (preferred) and llmops.yml (supported)
 - F14: llmops platform: mlflow exists as a skeleton
 - N5: Permissive validation uses a no-op tracer provider on config errors
 - N6: Strict validation fails startup on config errors
@@ -28,7 +28,7 @@ class TestMLflowConfigResolution:
     PRD: PRD_01, Requirements: F1, F6, F14
     """
 
-    def test_init_fails_without_config(
+    def test_instrument_fails_without_config(
         self,
         monkeypatch: pytest.MonkeyPatch,
         llmops_module: Any,
@@ -37,16 +37,16 @@ class TestMLflowConfigResolution:
         PRD: PRD_01, Requirement: F6
 
         GIVEN the LLMOPS_CONFIG_PATH environment variable is not set
-        AND no config path is provided to init()
-        WHEN llmops.init() is called
+        AND no config path is provided to instrument()
+        WHEN llmops.instrument() is called
         THEN a ConfigurationError is raised
         """
         monkeypatch.delenv("LLMOPS_CONFIG_PATH", raising=False)
 
         with pytest.raises(llmops_module.ConfigurationError):
-            llmops_module.init()
+            llmops_module.instrument()
 
-    def test_init_resolves_config_from_env_var(
+    def test_instrument_resolves_config_from_env_var(
         self,
         monkeypatch: pytest.MonkeyPatch,
         valid_mlflow_config_file: "Path",
@@ -57,16 +57,16 @@ class TestMLflowConfigResolution:
 
         GIVEN a valid config file exists
         AND the LLMOPS_CONFIG_PATH environment variable is set to that path
-        WHEN llmops.init() is called without arguments
+        WHEN llmops.instrument() is called without arguments
         THEN the SDK initializes successfully
         """
         monkeypatch.setenv("LLMOPS_CONFIG_PATH", str(valid_mlflow_config_file))
 
-        llmops_module.init()
+        llmops_module.instrument()
 
         assert llmops_module.is_configured()
 
-    def test_init_explicit_path_takes_precedence_over_env(
+    def test_instrument_explicit_path_takes_precedence_over_env(
         self,
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: "Path",
@@ -79,7 +79,7 @@ class TestMLflowConfigResolution:
         GIVEN a valid config file exists at "env.yaml"
         AND a valid config file exists at "arg.yaml"
         AND the LLMOPS_CONFIG_PATH environment variable is set to "env.yaml"
-        WHEN llmops.init() is called with config set to "arg.yaml"
+        WHEN llmops.instrument() is called with config set to "arg.yaml"
         THEN the SDK initializes successfully
         AND the config from "arg.yaml" is used (not "env.yaml")
         """
@@ -94,7 +94,7 @@ class TestMLflowConfigResolution:
 
         monkeypatch.setenv("LLMOPS_CONFIG_PATH", str(env_config))
 
-        llmops_module.init(config=arg_config)
+        llmops_module.instrument(config=arg_config)
 
         assert llmops_module.is_configured()
 
@@ -118,7 +118,7 @@ class TestMLflowFileExtensions:
     PRD: PRD_01, Requirement: F7
     """
 
-    def test_init_accepts_yaml_extension(
+    def test_instrument_accepts_yaml_extension(
         self,
         tmp_path: "Path",
         valid_mlflow_config_content: str,
@@ -128,17 +128,17 @@ class TestMLflowFileExtensions:
         PRD: PRD_01, Requirement: F7
 
         GIVEN a valid config file exists with .yaml extension
-        WHEN llmops.init() is called with that config path
+        WHEN llmops.instrument() is called with that config path
         THEN the SDK initializes successfully
         """
         config_path = tmp_path / "config.yaml"
         config_path.write_text(valid_mlflow_config_content)
 
-        llmops_module.init(config=config_path)
+        llmops_module.instrument(config=config_path)
 
         assert llmops_module.is_configured()
 
-    def test_init_accepts_yml_extension(
+    def test_instrument_accepts_yml_extension(
         self,
         tmp_path: "Path",
         valid_mlflow_config_content: str,
@@ -148,13 +148,13 @@ class TestMLflowFileExtensions:
         PRD: PRD_01, Requirement: F7
 
         GIVEN a valid config file exists with .yml extension
-        WHEN llmops.init() is called with that config path
+        WHEN llmops.instrument() is called with that config path
         THEN the SDK initializes successfully
         """
         config_path = tmp_path / "config.yml"
         config_path.write_text(valid_mlflow_config_content)
 
-        llmops_module.init(config=config_path)
+        llmops_module.instrument(config=config_path)
 
         assert llmops_module.is_configured()
 
@@ -177,10 +177,10 @@ class TestMLflowSkeletonBehavior:
         PRD: PRD_01, Requirement: F14
 
         GIVEN a valid MLflow config file
-        WHEN llmops.init() is called
+        WHEN llmops.instrument() is called
         THEN the SDK initializes successfully
         """
-        llmops_module.init(config=valid_mlflow_config_file)
+        llmops_module.instrument(config=valid_mlflow_config_file)
 
         assert llmops_module.is_configured()
 
@@ -202,7 +202,7 @@ class TestMLflowValidation:
 
         GIVEN a config file with validation mode set to "permissive"
         AND the config file is missing required fields (but has platform)
-        WHEN llmops.init() is called with that config
+        WHEN llmops.instrument() is called with that config
         THEN the SDK initializes successfully (no-op mode)
         AND no exception is raised
         """
@@ -216,7 +216,7 @@ class TestMLflowValidation:
             "  tracking_uri: http://localhost:5001\n"
         )
 
-        llmops_module.init(config=config_path)
+        llmops_module.instrument(config=config_path)
 
         assert llmops_module.is_configured()
 
@@ -230,7 +230,7 @@ class TestMLflowValidation:
 
         GIVEN a config file with validation mode set to "strict"
         AND the config file is missing required fields
-        WHEN llmops.init() is called with that config
+        WHEN llmops.instrument() is called with that config
         THEN a ConfigurationError is raised
         """
         config_path = tmp_path / "llmops.yaml"
@@ -242,4 +242,4 @@ class TestMLflowValidation:
         )
 
         with pytest.raises(llmops_module.ConfigurationError):
-            llmops_module.init(config=config_path)
+            llmops_module.instrument(config=config_path)

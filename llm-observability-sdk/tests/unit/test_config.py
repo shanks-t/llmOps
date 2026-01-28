@@ -722,7 +722,7 @@ class TestEnvVarOverrides:
 
         GIVEN a config file with arize.api_key set to "${ARIZE_API_KEY}"
         AND the ARIZE_API_KEY environment variable is set to "test-api-key"
-        WHEN llmops.init() is called
+        WHEN llmops.instrument() is called
         THEN the API key from the environment is used
         """
         config_path = tmp_path / "llmops.yaml"
@@ -743,7 +743,7 @@ class TestEnvVarOverrides:
 
         monkeypatch.setenv("ARIZE_API_KEY", "test-api-key-from-env")
 
-        llmops_module.init(config=config_path)
+        llmops_module.instrument(config=config_path)
 
         assert llmops_module.is_configured()
 
@@ -758,7 +758,7 @@ class TestEnvVarOverrides:
 
         GIVEN a config file with arize.space_id set to "${ARIZE_SPACE_ID}"
         AND the ARIZE_SPACE_ID environment variable is set
-        WHEN llmops.init() is called
+        WHEN llmops.instrument() is called
         THEN the space ID from the environment is used
         """
         config_path = tmp_path / "llmops.yaml"
@@ -779,7 +779,7 @@ class TestEnvVarOverrides:
 
         monkeypatch.setenv("ARIZE_SPACE_ID", "test-space-id-from-env")
 
-        llmops_module.init(config=config_path)
+        llmops_module.instrument(config=config_path)
 
         assert llmops_module.is_configured()
 
@@ -794,7 +794,7 @@ class TestEnvVarOverrides:
 
         GIVEN a config file referencing an env var that is not set
         AND validation mode is permissive
-        WHEN llmops.init() is called
+        WHEN llmops.instrument() is called
         THEN the SDK initializes without raising an exception
         AND a no-op or degraded mode is used
         """
@@ -816,7 +816,7 @@ class TestEnvVarOverrides:
 
         monkeypatch.delenv("NONEXISTENT_ENV_VAR", raising=False)
 
-        llmops_module.init(config=config_path)
+        llmops_module.instrument(config=config_path)
 
         assert llmops_module.is_configured()
 
@@ -831,7 +831,7 @@ class TestEnvVarOverrides:
 
         GIVEN a config file referencing an env var that is not set
         AND validation mode is strict
-        WHEN llmops.init() is called
+        WHEN llmops.instrument() is called
         THEN a ConfigurationError is raised
         """
         config_path = tmp_path / "llmops.yaml"
@@ -853,7 +853,7 @@ class TestEnvVarOverrides:
         monkeypatch.delenv("NONEXISTENT_ENV_VAR", raising=False)
 
         with pytest.raises(llmops_module.ConfigurationError):
-            llmops_module.init(config=config_path)
+            llmops_module.instrument(config=config_path)
 
 
 @pytest.mark.unit

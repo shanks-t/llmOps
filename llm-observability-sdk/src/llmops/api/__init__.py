@@ -1,7 +1,7 @@
 """Public API for the LLMOPS SDK.
 
 This module re-exports the stable public interface:
-- init() - Initialize the SDK
+- instrument() - Initialize the SDK
 - shutdown() - Shutdown the SDK and flush telemetry
 - is_configured() - Check if the SDK has been initialized
 - Config and related types - Programmatic configuration
@@ -9,7 +9,7 @@ This module re-exports the stable public interface:
 
 from __future__ import annotations
 
-from llmops.api._init import init, is_configured, shutdown
+from llmops.api._init import instrument, is_configured, shutdown
 from llmops.api.types import (
     ArizeConfig,
     Config,
@@ -20,7 +20,7 @@ from llmops.api.types import (
 )
 
 __all__ = [
-    "init",
+    "instrument",
     "shutdown",
     "is_configured",
     "Config",

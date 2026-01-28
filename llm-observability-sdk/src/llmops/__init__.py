@@ -3,7 +3,7 @@
 This SDK provides a single entry point for LLM observability:
 
     import llmops
-    llmops.init(config="llmops.yaml")
+    llmops.instrument(config="llmops.yaml")
 
 Configuration drives platform selection - specify `platform: arize` or
 `platform: mlflow` in your YAML config file.
@@ -18,7 +18,7 @@ from llmops.api import (
     MLflowConfig,
     ServiceConfig,
     ValidationConfig,
-    init,
+    instrument,
     is_configured,
     shutdown,
 )
@@ -28,7 +28,7 @@ __version__ = "0.3.0"
 
 __all__ = [
     # Entry points
-    "init",
+    "instrument",
     "shutdown",
     "is_configured",
     # Configuration types

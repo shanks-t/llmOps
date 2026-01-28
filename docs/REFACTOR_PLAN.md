@@ -38,7 +38,7 @@ llmops/
 ├── __init__.py              # Re-exports from api/
 ├── api/
 │   ├── __init__.py          # Public: init, shutdown, is_configured, Config
-│   ├── init.py              # init(), shutdown(), is_configured()
+│   ├── init.py              # instrument(), shutdown(), is_configured()
 │   └── types.py             # Config dataclasses
 ├── sdk/
 │   ├── config/
@@ -64,16 +64,16 @@ llmops/
 └── exceptions.py            # ConfigurationError
 ```
 
-**Public API:** `llmops.init(config)`, `llmops.shutdown()`, `llmops.is_configured()`, `llmops.Config`
+**Public API:** `llmops.instrument(config)`, `llmops.shutdown()`, `llmops.is_configured()`, `llmops.Config`
 
 ### 1.3 Breaking Changes
 
 | Change | Migration |
 |--------|-----------|
-| `llmops.arize.instrument()` removed | Use `llmops.init(config="...")` |
-| `llmops.mlflow.instrument()` removed | Use `llmops.init(config="...")` |
+| `llmops.arize.instrument()` removed | Use `llmops.instrument(config="...")` |
+| `llmops.mlflow.instrument()` removed | Use `llmops.instrument(config="...")` |
 | Config requires `platform:` field | Add `platform: arize` to YAML |
-| `instrument()` returned TracerProvider | `init()` returns None |
+| `instrument()` returned TracerProvider | `instrument()` returns None |
 
 ---
 
@@ -221,7 +221,7 @@ from llmops.sdk.lifecycle import set_configured, is_configured as _is_configured
 from llmops.sdk.pipeline import create_provider, apply_instrumentation
 from llmops.exceptions import ConfigurationError
 
-def init(config: str | Path | Config) -> None:
+def instrument(config: str | Path | Config) -> None:
     """Initialize LLMOPS SDK with the given configuration."""
     if isinstance(config, (str, Path)):
         config = load_config(config)
@@ -246,7 +246,7 @@ Public exports:
 
 ```python
 # llmops/api/__init__.py
-from llmops.api.init import init, shutdown, is_configured
+from llmops.api.init import instrument, shutdown, is_configured
 from llmops.api.types import (
     Config,
     ServiceConfig,
@@ -257,7 +257,7 @@ from llmops.api.types import (
 )
 
 __all__ = [
-    "init",
+    "instrument",
     "shutdown",
     "is_configured",
     "Config",
@@ -459,7 +459,7 @@ rm -rf llmops/_platforms/
 """LLMOPS SDK - LLM Observability for Python."""
 
 from llmops.api import (
-    init,
+    instrument,
     shutdown,
     is_configured,
     Config,
@@ -474,7 +474,7 @@ from llmops.exceptions import ConfigurationError
 __version__ = "0.3.0"
 
 __all__ = [
-    "init",
+    "instrument",
     "shutdown",
     "is_configured",
     "Config",
@@ -554,7 +554,7 @@ arize:
 | File | Purpose |
 |------|---------|
 | `api/__init__.py` | Public exports |
-| `api/init.py` | `init()`, `shutdown()`, `is_configured()` |
+| `api/init.py` | `instrument()`, `shutdown()`, `is_configured()` |
 | `api/types.py` | Config dataclasses |
 | `sdk/__init__.py` | Package marker |
 | `sdk/config/__init__.py` | Package marker |
@@ -577,8 +577,8 @@ arize:
 
 | File | Reason |
 |------|--------|
-| `arize.py` | Replaced by `init()` |
-| `mlflow.py` | Replaced by `init()` |
+| `arize.py` | Replaced by `instrument()` |
+| `mlflow.py` | Replaced by `instrument()` |
 | `config.py` | Moved to `sdk/config/` |
 | `_platforms/*` | Entire directory removed |
 | `_internal/instrumentation.py` | Dead code |
@@ -606,7 +606,7 @@ provider = instrument(config_path="test.yaml")
 **After:**
 ```python
 import llmops
-llmops.init(config="test.yaml")
+llmops.instrument(config="test.yaml")
 # No return value - use llmops.is_configured() to verify
 ```
 
@@ -625,8 +625,8 @@ service:
 
 | Test | Purpose |
 |------|---------|
-| `test_init_from_yaml` | Verify `init()` loads YAML config |
-| `test_init_from_config_object` | Verify `init()` accepts `Config` |
+| `test_init_from_yaml` | Verify `instrument()` loads YAML config |
+| `test_init_from_config_object` | Verify `instrument()` accepts `Config` |
 | `test_init_missing_platform` | Verify error for missing platform field |
 | `test_init_invalid_platform` | Verify error for unknown platform |
 | `test_is_configured_before_init` | Returns False |
@@ -644,7 +644,7 @@ Add note to PRD_01.md:
 
 ```markdown
 > **Note:** The API described in this document (`llmops.arize.instrument()`) has been
-> superseded by the single-init pattern (`llmops.init()`). See DESIGN_PHILOSOPHY.md
+> superseded by the single-instrument pattern (`llmops.instrument()`). See DESIGN_PHILOSOPHY.md
 > for the updated design rationale.
 ```
 
@@ -654,7 +654,7 @@ Update all examples in `docs/` and `examples/` to use:
 
 ```python
 import llmops
-llmops.init(config="llmops.yaml")
+llmops.instrument(config="llmops.yaml")
 ```
 
 ---

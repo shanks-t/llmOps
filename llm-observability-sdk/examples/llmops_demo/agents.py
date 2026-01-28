@@ -74,13 +74,18 @@ def get_time(city: str) -> dict:
 
 assistant_agent = Agent(
     name="assistant",
-    model="gemini-2.0-flash-exp",
+    model="gemini-2.0-flash",
     description="A helpful assistant that can check weather and time.",
     instruction="""You are a helpful assistant. You can help users with:
     1. Getting weather information for cities using the get_weather tool
     2. Getting the current time in cities using the get_time tool
 
     When asked about weather or time, always use the appropriate tool.
+
+    IMPORTANT: If the user provides context/reference information, base your
+    response ONLY on that context. Do not add information not present in the
+    context. This is critical for grounded, faithful responses.
+
     Be concise and friendly in your responses.""",
     tools=[get_weather, get_time],
 )
@@ -103,13 +108,22 @@ def create_runner(agent: Agent) -> Runner:
     )
 
 
-async def run_agent(agent: Agent, query: str, user_id: str = "default") -> str:
+async def run_agent(
+    agent: Agent,
+    query: str,
+    user_id: str = "default",
+    context: str | None = None,
+) -> str:
     """Run an agent and collect the response.
 
     Args:
         agent: The agent to run.
         query: User's input message.
         user_id: User identifier for session management.
+        context: Optional context for grounded responses. When provided,
+                 the agent is instructed to base its response only on this
+                 context. Useful for testing faithfulness/hallucination
+                 evaluation.
 
     Returns:
         The agent's response text.
@@ -121,9 +135,20 @@ async def run_agent(agent: Agent, query: str, user_id: str = "default") -> str:
         user_id=user_id,
     )
 
+    # Format message with context for grounding (enables faithfulness evaluation)
+    if context:
+        formatted_query = f"""Context (base your response ONLY on this information):
+{context}
+
+User Question: {query}
+
+Respond using ONLY the information provided in the context above."""
+    else:
+        formatted_query = query
+
     user_message = types.Content(
         role="user",
-        parts=[types.Part(text=query)],
+        parts=[types.Part(text=formatted_query)],
     )
 
     response_text = ""

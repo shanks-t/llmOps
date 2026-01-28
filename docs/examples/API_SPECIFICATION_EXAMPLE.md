@@ -25,7 +25,7 @@ This document defines the **public API contracts** for the LLM Observability SDK
 ```
 llmops/
 ├── __init__.py          # Public API exports
-├── init.py              # init() for auto-instrumentation
+├── init.py              # instrument() for auto-instrumentation
 ├── decorators.py        # @llm, @tool, @agent, @retrieve
 ├── enrichment.py        # set_input, set_output, set_tokens, emit_chunk
 ├── types.py             # SemanticKind, TokenUsage, etc.
@@ -44,7 +44,7 @@ llmops/
 import llmops
 
 # Auto-instrumentation (quick start)
-llmops.init()  # Uses config from llmops.yaml
+llmops.instrument()  # Uses config from llmops.yaml
 
 # Manual instrumentation (fine-grained control)
 @llmops.llm(model="gpt-4o")
@@ -658,7 +658,7 @@ class Configuration:
     service_name: str
     service_version: str | None = None
 
-    # For init() - single backend with auto-instrumentation
+    # For instrument() - single backend with auto-instrumentation
     backend: Literal["phoenix", "mlflow"] | None = None
     phoenix: PhoenixConfig | None = None
     mlflow: MLflowConfig | None = None
@@ -678,13 +678,13 @@ class Configuration:
 
 ## 6. Initialization & Configuration API
 
-### 6.1 `init()` — Auto-Instrumentation Entry Point
+### 6.1 `instrument()` — Auto-Instrumentation Entry Point
 
 Initialize the SDK with auto-instrumentation enabled. This is the **recommended quick-start** for most applications.
 
 **Signature:**
 ```python
-def init(
+def instrument(
     config_path: str | Path | None = None,
     *,
     backend: Literal["phoenix", "mlflow"] | None = None,
@@ -728,13 +728,13 @@ def init(
 
     Examples:
         # Minimal setup (uses ./llmops.yaml)
-        llmops.init()
+        llmops.instrument()
 
         # Override backend programmatically
-        llmops.init(backend="phoenix", endpoint="http://localhost:6006")
+        llmops.instrument(backend="phoenix", endpoint="http://localhost:6006")
 
         # Disable auto-instrumentation (manual only)
-        llmops.init(auto_instrument=False)
+        llmops.instrument(auto_instrument=False)
     """
 ```
 
@@ -746,7 +746,7 @@ def init(
 #   endpoint: http://localhost:6006
 
 import llmops
-llmops.init()  # That's it!
+llmops.instrument()  # That's it!
 
 # All LLM library calls are now automatically traced
 response = openai.chat.completions.create(
@@ -776,7 +776,7 @@ def configure(
     """
     Initialize the LLM Observability SDK with manual configuration.
 
-    Note: For most use cases, prefer init() which provides auto-instrumentation.
+    Note: For most use cases, prefer instrument() which provides auto-instrumentation.
     Use configure() when you need:
     - Multiple backends simultaneously
     - Test mode for unit testing
@@ -815,9 +815,9 @@ def configure(
 
 ### 6.3 YAML Configuration Schema
 
-The configuration format differs slightly depending on whether you use `init()` (auto-instrumentation) or `configure()` (manual setup).
+The configuration format differs slightly depending on whether you use `instrument()` (auto-instrumentation) or `configure()` (manual setup).
 
-#### For `init()` (Auto-Instrumentation)
+#### For `instrument()` (Auto-Instrumentation)
 
 ```yaml
 # llmops.yaml - Phoenix backend
@@ -1007,7 +1007,7 @@ def session(session_id: str):
 
 | Category | Source | SDK Behavior |
 |----------|--------|--------------|
-| **Configuration Error** | Invalid config | Raised at `init()` or `configure()` |
+| **Configuration Error** | Invalid config | Raised at `instrument()` or `configure()` |
 | **Telemetry Error** | SDK internal failure | Logged, operation continues |
 | **Application Error** | User code exception | Propagated unchanged |
 
@@ -1020,14 +1020,14 @@ class ConfigurationError(Exception):
     """
     Raised when SDK configuration is invalid.
 
-    Only raised during init() or configure(), never during normal operation.
+    Only raised during instrument() or configure(), never during normal operation.
     """
     pass
 ```
 
 **Examples of configuration errors:**
 - Missing required `service.name`
-- No backend configured (for `init()`)
+- No backend configured (for `instrument()`)
 - Invalid backend type
 - Malformed YAML
 - Invalid instrumentor name in `disabled` list
@@ -1070,7 +1070,7 @@ import llmops
 from openai import OpenAI
 
 # Initialize auto-instrumentation
-llmops.init()
+llmops.instrument()
 
 # That's it! All OpenAI calls are now automatically traced
 client = OpenAI()
@@ -1108,7 +1108,7 @@ mlflow:
 import llmops
 from anthropic import Anthropic
 
-llmops.init()
+llmops.instrument()
 
 # Anthropic calls are also auto-traced
 client = Anthropic()
@@ -1131,7 +1131,7 @@ import llmops
 from openai import AsyncOpenAI
 
 # Enable auto-instrumentation
-llmops.init()
+llmops.instrument()
 
 client = AsyncOpenAI()
 
@@ -1271,7 +1271,7 @@ app = FastAPI()
 @app.on_event("startup")
 async def startup():
     # Auto-instrumentation: all LLM calls traced automatically
-    llmops.init()
+    llmops.instrument()
 
 @app.post("/chat")
 async def chat(message: str):
@@ -1395,7 +1395,7 @@ async def stream(prompt: str):
 ## 11. Public API Summary
 
 ### Initialization (Auto-Instrumentation)
-- `llmops.init(config_path?, backend?, auto_instrument?, capture_content?, **backend_kwargs)` — **Recommended entry point**
+- `llmops.instrument(config_path?, backend?, auto_instrument?, capture_content?, **backend_kwargs)` — **Recommended entry point**
 
 ### Decorators (Manual Instrumentation)
 - `@llmops.llm(model, name?, capture?)`

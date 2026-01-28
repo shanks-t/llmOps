@@ -35,13 +35,13 @@ class TestPlatformIsolation:
         PRD: PRD_01, Requirement: F9, F12
 
         GIVEN a config file contains both arize and mlflow sections
-        WHEN llmops.init() is called with platform: arize
+        WHEN llmops.instrument() is called with platform: arize
         THEN Arize initializes successfully using only the arize section
         """
         config_path = tmp_path / "llmops.yaml"
         config_path.write_text(valid_arize_config_with_mlflow_content)
 
-        llmops_module.init(config=config_path)
+        llmops_module.instrument(config=config_path)
 
         assert llmops_module.is_configured()
 
@@ -55,12 +55,12 @@ class TestPlatformIsolation:
         PRD: PRD_01, Requirement: F9, F12
 
         GIVEN a config file contains both mlflow and arize sections
-        WHEN llmops.init() is called with platform: mlflow
+        WHEN llmops.instrument() is called with platform: mlflow
         THEN MLflow initializes successfully using only the mlflow section
         """
         config_path = tmp_path / "llmops.yaml"
         config_path.write_text(valid_mlflow_config_with_arize_content)
 
-        llmops_module.init(config=config_path)
+        llmops_module.instrument(config=config_path)
 
         assert llmops_module.is_configured()

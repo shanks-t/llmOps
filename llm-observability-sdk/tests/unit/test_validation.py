@@ -36,7 +36,7 @@ class TestPermissiveMode:
 
         GIVEN a config file with validation mode set to "permissive"
         AND the config file is missing required fields (but has platform)
-        WHEN llmops.init() is called with that config
+        WHEN llmops.instrument() is called with that config
         THEN the SDK initializes successfully (no-op mode)
         AND no exception is raised
         """
@@ -50,7 +50,7 @@ class TestPermissiveMode:
             "  endpoint: http://localhost/v1/traces\n"
         )
 
-        llmops_module.init(config=config_path)
+        llmops_module.instrument(config=config_path)
 
         assert llmops_module.is_configured()
 
@@ -72,7 +72,7 @@ class TestStrictMode:
 
         GIVEN a config file with validation mode set to "strict"
         AND the config file is missing required fields
-        WHEN llmops.init() is called with that config
+        WHEN llmops.instrument() is called with that config
         THEN a ConfigurationError is raised
         """
         config_path = tmp_path / "llmops.yaml"
@@ -84,7 +84,7 @@ class TestStrictMode:
         )
 
         with pytest.raises(llmops_module.ConfigurationError):
-            llmops_module.init(config=config_path)
+            llmops_module.instrument(config=config_path)
 
 
 @pytest.mark.unit
@@ -121,7 +121,7 @@ class TestTelemetryIsolation:
 
         def business_logic() -> str:
             """Business logic that should never fail due to telemetry."""
-            llmops_module.init(config=config_path)
+            llmops_module.instrument(config=config_path)
             return "business logic completed"
 
         result = business_logic()
@@ -142,7 +142,7 @@ class TestTelemetryIsolation:
         """
         from llmops.sdk.lifecycle import get_provider
 
-        llmops_module.init(config=valid_arize_config_file)
+        llmops_module.instrument(config=valid_arize_config_file)
         assert llmops_module.is_configured()
 
         provider = get_provider()

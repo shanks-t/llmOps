@@ -1,7 +1,7 @@
 # PRD_03 — API Specification
 
-**Version:** 0.2
-**Date:** 2026-01-27
+**Version:** 0.3
+**Date:** 2026-01-28
 **Status:** Draft
 **Implements:** PRD_03
 
@@ -13,7 +13,7 @@ This document defines the public API for PRD_03: LLM-as-a-Judge Evaluator Templa
 
 **Design Principles:**
 - Evaluation is accessed via the reserved `llmops.eval` namespace (per Design Philosophy)
-- Evaluation is independent of telemetry (no `init()` required)
+- Evaluation is independent of telemetry (no `instrument()` required)
 - LLM configuration is user-provided (SDK does not manage API keys)
 - Built-in templates wrap `phoenix.evals` for consistency with Arize ecosystem
 
@@ -80,6 +80,11 @@ def faithfulness(
     The Faithfulness evaluator checks whether an LLM's output is grounded
     in the provided context. It uses Phoenix Evals' benchmarked prompt
     template which achieves 93% precision on the HaluEval dataset.
+
+    **Hallucination Detection:** This evaluator is the primary mechanism for
+    detecting hallucinations in RAG and grounded generation applications.
+    An `unfaithful` result indicates the output contains claims not supported
+    by the provided context (i.e., hallucinated content).
 
     Args:
         llm: A phoenix.evals.llm.LLM instance configured with your
@@ -362,6 +367,188 @@ def clear() -> None:
         >>> llmops.eval.clear()
         >>> print(llmops.eval.list())
         []
+    """
+```
+
+---
+
+### 3.8 `llmops.eval.push()`
+
+Push an evaluator template to Arize AX Evaluator Hub for team-wide reuse.
+
+**Signature:**
+```python
+def push(
+    name: str,
+    evaluator: "Evaluator",
+    description: str | None = None,
+) -> None:
+    """
+    Push an evaluator template to Arize AX Evaluator Hub.
+
+    This saves the evaluator's configuration (prompt template, choices,
+    direction) to the Arize backend, making it available for other team
+    members to retrieve with pull().
+
+    Requires:
+        - llmops.instrument() must have been called with Arize platform config
+        - Valid Arize AX API credentials (from init config)
+
+    Args:
+        name: Unique identifier for the template in the Evaluator Hub.
+              Convention: use lowercase with underscores (e.g., "professional_tone")
+        evaluator: An evaluator instance created with create_classifier()
+                   or one of the built-in templates.
+        description: Optional human-readable description of what the
+                    evaluator does.
+
+    Returns:
+        None
+
+    Raises:
+        RuntimeError: If llmops.instrument() has not been called or platform
+                     is not Arize.
+        PermissionError: If Arize API authentication fails.
+        TimeoutError: If request to Arize backend times out.
+
+    Example:
+        >>> import llmops
+        >>> from phoenix.evals.llm import LLM
+        >>>
+        >>> # Initialize with Arize config
+        >>> llmops.instrument(config="llmops.yaml")
+        >>>
+        >>> llm = LLM(provider="openai", model="gpt-4o")
+        >>> tone_eval = llmops.eval.create_classifier(
+        ...     name="professional_tone",
+        ...     prompt_template="Is this response professional? {output}",
+        ...     llm=llm,
+        ...     choices={"professional": 1.0, "unprofessional": 0.0},
+        ... )
+        >>>
+        >>> # Push to Arize AX for team reuse
+        >>> llmops.eval.push(
+        ...     "professional_tone",
+        ...     tone_eval,
+        ...     description="Evaluates customer service response professionalism"
+        ... )
+
+    Note:
+        - The LLM configuration is NOT stored (only the prompt template)
+        - If a template with the same name exists, it will be overwritten
+        - Templates are scoped to your Arize space/project
+    """
+```
+
+---
+
+### 3.9 `llmops.eval.pull()`
+
+Pull an evaluator template from Arize AX Evaluator Hub.
+
+**Signature:**
+```python
+def pull(
+    name: str,
+    llm: "LLM",
+) -> "Evaluator":
+    """
+    Pull an evaluator template from Arize AX Evaluator Hub.
+
+    Retrieves a template configuration from the Arize backend and creates
+    a configured evaluator using the provided LLM.
+
+    Requires:
+        - llmops.instrument() must have been called with Arize platform config
+        - Valid Arize AX API credentials (from init config)
+
+    Args:
+        name: Template identifier in the Evaluator Hub. Can be:
+              - Arize pre-built: "arize/hallucination", "arize/relevance"
+              - Custom: "professional_tone", "my_custom_eval"
+        llm: A phoenix.evals.llm.LLM instance to use for evaluation.
+             The template provides the prompt; you provide the LLM.
+
+    Returns:
+        A configured evaluator instance ready to use.
+
+    Raises:
+        RuntimeError: If llmops.instrument() has not been called or platform
+                     is not Arize.
+        KeyError: If template with given name is not found.
+        PermissionError: If Arize API authentication fails.
+        TimeoutError: If request to Arize backend times out.
+
+    Example:
+        >>> import llmops
+        >>> from phoenix.evals.llm import LLM
+        >>>
+        >>> llmops.instrument(config="llmops.yaml")
+        >>>
+        >>> llm = LLM(provider="openai", model="gpt-4o")
+        >>>
+        >>> # Pull Arize pre-built template
+        >>> hallucination_eval = llmops.eval.pull("arize/hallucination", llm=llm)
+        >>>
+        >>> # Pull custom team template
+        >>> tone_eval = llmops.eval.pull("professional_tone", llm=llm)
+        >>>
+        >>> # Use the pulled evaluator
+        >>> scores = tone_eval.evaluate({"output": "Hello, how can I help?"})
+
+    Note:
+        - The pulled evaluator uses YOUR LLM (not stored in template)
+        - Consider registering pulled templates locally for performance:
+          llmops.eval.register("tone", llmops.eval.pull("professional_tone", llm))
+    """
+```
+
+---
+
+### 3.10 `llmops.eval.list_remote()`
+
+List available templates from Arize AX Evaluator Hub.
+
+**Signature:**
+```python
+def list_remote() -> list[str]:
+    """
+    List available evaluator templates from Arize AX Evaluator Hub.
+
+    Returns all templates available in your Arize space, including
+    Arize pre-built templates and custom templates pushed by your team.
+
+    Requires:
+        - llmops.instrument() must have been called with Arize platform config
+        - Valid Arize AX API credentials (from init config)
+
+    Returns:
+        A list of template names available for pull().
+
+    Raises:
+        RuntimeError: If llmops.instrument() has not been called or platform
+                     is not Arize.
+        PermissionError: If Arize API authentication fails.
+        TimeoutError: If request to Arize backend times out.
+
+    Example:
+        >>> import llmops
+        >>>
+        >>> llmops.instrument(config="llmops.yaml")
+        >>>
+        >>> templates = llmops.eval.list_remote()
+        >>> print(templates)
+        ['arize/hallucination', 'arize/relevance', 'arize/toxicity',
+         'professional_tone', 'response_quality']
+        >>>
+        >>> # Check if a specific template exists
+        >>> if "professional_tone" in llmops.eval.list_remote():
+        ...     evaluator = llmops.eval.pull("professional_tone", llm=llm)
+
+    Note:
+        - Arize pre-built templates are prefixed with "arize/"
+        - Custom templates use the name provided in push()
+        - Results may be cached for performance
     """
 ```
 
@@ -682,7 +869,7 @@ Evaluation works independently of telemetry:
 import llmops
 from phoenix.evals.llm import LLM
 
-# No init() call needed!
+# No instrument() call needed!
 # Evaluation is completely independent
 
 llm = LLM(provider="openai", model="gpt-4o")
@@ -702,7 +889,7 @@ import llmops
 from phoenix.evals.llm import LLM
 
 # Initialize telemetry (PRD_01)
-llmops.init(config="llmops.yaml")
+llmops.instrument(config="llmops.yaml")
 
 # Initialize evaluation (PRD_03) - independent of telemetry
 llm = LLM(provider="openai", model="gpt-4o")
@@ -711,6 +898,77 @@ faithfulness = llmops.eval.faithfulness(llm=llm)
 # Your app code...
 # Traces go to configured backend
 # Evaluations run locally with your LLM
+```
+
+### 8.5 Backend Template Storage (Arize AX)
+
+```python
+import llmops
+from phoenix.evals.llm import LLM
+
+# Initialize with Arize config (required for backend operations)
+llmops.instrument(config="llmops.yaml")
+
+llm = LLM(provider="openai", model="gpt-4o")
+
+# Create a custom evaluator
+quality_eval = llmops.eval.create_classifier(
+    name="response_quality",
+    prompt_template="""
+    Evaluate the quality of this customer service response.
+
+    Customer Question: {question}
+    Agent Response: {response}
+
+    A "good" response is helpful, accurate, and professional.
+    A "poor" response is unhelpful, inaccurate, or unprofessional.
+    """,
+    llm=llm,
+    choices={"good": 1.0, "poor": 0.0},
+)
+
+# Push to Arize AX for team reuse
+llmops.eval.push(
+    "response_quality",
+    quality_eval,
+    description="Evaluates customer service response quality"
+)
+
+# Later, in another service/notebook...
+# Pull the template and use it
+quality_eval = llmops.eval.pull("response_quality", llm=llm)
+scores = quality_eval.evaluate({
+    "question": "How do I reset my password?",
+    "response": "You can reset your password at example.com/reset"
+})
+```
+
+### 8.6 Using Arize Pre-Built Templates
+
+```python
+import llmops
+from phoenix.evals.llm import LLM
+
+llmops.instrument(config="llmops.yaml")
+
+llm = LLM(provider="openai", model="gpt-4o")
+
+# List available templates
+templates = llmops.eval.list_remote()
+print(templates)
+# ['arize/hallucination', 'arize/relevance', 'arize/toxicity', 'response_quality']
+
+# Pull Arize's pre-built hallucination detector
+hallucination_eval = llmops.eval.pull("arize/hallucination", llm=llm)
+
+# Use it
+scores = hallucination_eval.evaluate({
+    "input": "What is the capital of France?",
+    "output": "Paris is the capital of France and has a population of 10 million.",
+    "context": "Paris is the capital city of France."
+})
+
+print(scores[0].label)  # "faithful" or "unfaithful"
 ```
 
 ---
@@ -725,22 +983,102 @@ faithfulness = llmops.eval.faithfulness(llm=llm)
 
 ### Functions
 
-| Function | Signature | Returns |
-|----------|-----------|---------|
-| `faithfulness` | `(llm: LLM)` | `FaithfulnessEvaluator` |
-| `create_classifier` | `(name, prompt_template, llm, choices, direction?)` | `ClassificationEvaluator` |
-| `register` | `(name: str, evaluator: Evaluator)` | `None` |
-| `get` | `(name: str)` | `Evaluator` |
-| `list` | `()` | `list[str]` |
-| `clear` | `()` | `None` |
+| Function | Signature | Returns | Backend Required |
+|----------|-----------|---------|------------------|
+| `faithfulness` | `(llm: LLM)` | `FaithfulnessEvaluator` | No |
+| `create_classifier` | `(name, prompt_template, llm, choices, direction?)` | `ClassificationEvaluator` | No |
+| `register` | `(name: str, evaluator: Evaluator)` | `None` | No |
+| `get` | `(name: str)` | `Evaluator` | No |
+| `list` | `()` | `list[str]` | No |
+| `clear` | `()` | `None` | No |
+| `push` | `(name: str, evaluator: Evaluator, description?: str)` | `None` | Yes (Arize AX) |
+| `pull` | `(name: str, llm: LLM)` | `Evaluator` | Yes (Arize AX) |
+| `list_remote` | `()` | `list[str]` | Yes (Arize AX) |
 
 ### Exceptions
 
 | Exception | When Raised |
 |-----------|-------------|
 | `ImportError` | `arize-phoenix-evals` not installed |
-| `KeyError` | Evaluator name not in registry |
+| `KeyError` | Evaluator name not in registry or backend |
 | `ValueError` | Invalid arguments (e.g., empty choices) |
+| `RuntimeError` | Backend operation without `instrument()` or wrong platform |
+| `PermissionError` | Arize API authentication failed |
+| `TimeoutError` | Backend request timed out |
+
+---
+
+## 9.5 Future Template Signatures (Not in PRD_03)
+
+The following templates are planned for future PRDs. Their signatures are documented here for design consistency.
+
+### Redundancy Evaluator (Planned)
+
+```python
+def redundancy(
+    llm: "LLM",
+) -> "RedundancyEvaluator":
+    """
+    Create a Redundancy evaluator for detecting verbose or repetitive responses.
+
+    The Redundancy evaluator identifies responses that contain unnecessary
+    repetition, excessive elaboration, or information that doesn't add value
+    to the answer.
+
+    Args:
+        llm: A phoenix.evals.llm.LLM instance.
+
+    Returns:
+        A configured RedundancyEvaluator instance.
+
+    Input Schema:
+        output (str): The LLM response to evaluate
+        query (str, optional): Original query for relevance context
+
+    Output:
+        label: "concise" | "somewhat_redundant" | "highly_redundant"
+        score: 1.0 | 0.5 | 0.0
+        explanation: LLM reasoning for the judgment
+    """
+```
+
+### Omissions Evaluator (Design TBD)
+
+```python
+def omissions(
+    llm: "LLM",
+    expected_fields: list[str] | None = None,
+) -> "OmissionsEvaluator":
+    """
+    Create an Omissions evaluator for detecting missing information.
+
+    Note: This evaluator requires additional design work to handle
+    the reference/ground-truth comparison challenge. The API signature
+    may change significantly.
+
+    Args:
+        llm: A phoenix.evals.llm.LLM instance.
+        expected_fields: Optional list of field names to check for presence.
+
+    Returns:
+        A configured OmissionsEvaluator instance.
+
+    Input Schema:
+        output (str): The LLM response to evaluate
+        source (str): Reference document/ground truth
+        expected_fields (list[str], optional): Fields to verify presence of
+
+    Output:
+        label: "complete" | "partial" | "incomplete"
+        score: Coverage percentage (0.0 - 1.0)
+        metadata: {"missing_fields": [...], "found_fields": [...]}
+
+    Design Considerations:
+        - Requires reference data for comparison
+        - Domain-specific "importance" criteria
+        - May need embedding-based similarity for semantic coverage
+    """
+```
 
 ---
 
@@ -772,7 +1110,7 @@ def on_startup():
 
 ```python
 # BAD - Assuming eval requires telemetry deps
-llmops.init(...)  # Not needed for eval!
+llmops.instrument(...)  # Not needed for eval!
 
 # GOOD - Eval works independently
 llmops.eval.faithfulness(llm=llm)  # Just works
@@ -793,4 +1131,4 @@ llmops.eval.faithfulness(llm=llm)  # Just works
 ---
 
 **Document Owner:** Platform Team
-**Last Updated:** 2026-01-27
+**Last Updated:** 2026-01-28

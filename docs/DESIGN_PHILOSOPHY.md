@@ -23,14 +23,14 @@ The public API is boring and consistent:
 
 ```python
 import llmops
-llmops.init(config="llmops.yaml")
+llmops.instrument(config="llmops.yaml")
 ```
 
 That's the entire user-facing surface for initialization. The config file (or `Config` object) determines which backend, which instrumenters, and which behaviors are active.
 
 **Rationale:** If an average app developer has to remember which backend namespace to call, the SDK is leaking internal topology. The "how" (pipeline implementation) should be separable from the "what" (stable API contract).
 
-**Rule:** One `init()`, one `shutdown()`. Config drives composition.
+**Rule:** One `instrument()`, one `shutdown()`. Config drives composition.
 
 ---
 
@@ -40,7 +40,7 @@ Create a hard boundary between contract and mechanism:
 
 | Layer | Location | Stability | Contents |
 |-------|----------|-----------|----------|
-| **API** | `llmops/api/` | Stable (semver-major) | `init()`, `shutdown()`, `is_configured()`, `Config`, `ConfigurationError` |
+| **API** | `llmops/api/` | Stable (semver-major) | `instrument()`, `shutdown()`, `is_configured()`, `Config`, `ConfigurationError` |
 | **SDK** | `llmops/sdk/` | Internal | Config loading, lifecycle, pipeline composition |
 | **Exporters** | `llmops/exporters/` | Internal | Arize, MLflow, future backends |
 | **Instrumentation** | `llmops/instrumentation/` | Internal | Google ADK, Google GenAI hooks |
@@ -84,11 +84,11 @@ This keeps the dependency graph clean and allows adding new backends without tou
 
 ### 2.5 Telemetry Never Breaks Business Logic
 
-All SDK failures are caught and logged. No exceptions propagate to user code after `init()` returns.
+All SDK failures are caught and logged. No exceptions propagate to user code after `instrument()` returns.
 
 **Behaviors:**
-- `init()` in permissive mode: logs warning, returns successfully (with no-op provider)
-- `init()` in strict mode: raises `ConfigurationError` (dev-time feedback)
+- `instrument()` in permissive mode: logs warning, returns successfully (with no-op provider)
+- `instrument()` in strict mode: raises `ConfigurationError` (dev-time feedback)
 - Instrumentor failures: logged at debug level, silently skipped
 - Export failures: logged, retried per OTel SDK behavior
 
@@ -103,7 +103,7 @@ All SDK failures are caught and logged. No exceptions propagate to user code aft
 The following are public and stable:
 
 ```python
-llmops.init(config: str | Path | Config) -> None
+llmops.instrument(config: str | Path | Config) -> None
 llmops.shutdown() -> None
 llmops.is_configured() -> bool
 llmops.Config  # Dataclass for programmatic config
@@ -239,11 +239,11 @@ When patterns stabilize, the SDK may define:
 
 ## 7. Decision Records
 
-### 7.1 Why Single `init()` Over Namespaced Pattern
+### 7.1 Why Single `instrument()` Over Namespaced Pattern
 
 **Context:** PRD_01 originally specified `llmops.arize.instrument()` for explicit platform selection.
 
-**Decision:** Replace with single `llmops.init()` with config-driven platform selection.
+**Decision:** Replace with single `llmops.instrument()` with config-driven platform selection.
 
 **Rationale:**
 - Better composability (config can be environment-specific)
@@ -326,7 +326,7 @@ class Platform(Protocol):
 
 | Term | Definition |
 |------|------------|
-| **API** | Stable public interface (`llmops.init()`, etc.) |
+| **API** | Stable public interface (`llmops.instrument()`, etc.) |
 | **SDK** | Internal implementation (config loading, pipeline composition) |
 | **Exporter** | Component that sends telemetry to a backend (Arize, MLflow) |
 | **Exporter Factory** | Function that creates a configured TracerProvider for a specific backend |

@@ -50,7 +50,7 @@ class TestImportBehavior:
         import llmops
 
         # Entry points
-        assert hasattr(llmops, "init")
+        assert hasattr(llmops, "instrument")
         assert hasattr(llmops, "shutdown")
         assert hasattr(llmops, "is_configured")
 
@@ -82,7 +82,7 @@ class TestDependencyErrors:
 
         GIVEN arize.otel is not installed
         AND strict validation mode is enabled
-        WHEN llmops.init() is called with arize platform
+        WHEN llmops.instrument() is called with arize platform
         THEN ConfigurationError includes the install hint
         """
         import llmops
@@ -113,7 +113,7 @@ class TestDependencyErrors:
         with pytest.raises(
             llmops.ConfigurationError, match=r"pip install llmops\[arize\]"
         ):
-            llmops.init(config=config_path)
+            llmops.instrument(config=config_path)
 
     def test_missing_mlflow_deps_raise_helpful_error_in_strict_mode(
         self,
@@ -125,7 +125,7 @@ class TestDependencyErrors:
 
         GIVEN mlflow is not installed
         AND strict validation mode is enabled
-        WHEN llmops.init() is called with mlflow platform
+        WHEN llmops.instrument() is called with mlflow platform
         THEN ConfigurationError includes the install hint
         """
         import llmops
@@ -156,4 +156,4 @@ class TestDependencyErrors:
         with pytest.raises(
             llmops.ConfigurationError, match=r"pip install llmops\[mlflow\]"
         ):
-            llmops.init(config=config_path)
+            llmops.instrument(config=config_path)

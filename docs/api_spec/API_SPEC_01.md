@@ -9,9 +9,9 @@
 
 ## 1. Overview
 
-This document defines the public API for PRD_01: Config-Driven Auto-Instrumentation SDK. The SDK exposes a single `init()` entry point that initializes telemetry based on configuration. Platform selection is explicit in the configuration file via the `platform` field.
+This document defines the public API for PRD_01: Config-Driven Auto-Instrumentation SDK. The SDK exposes a single `instrument()` entry point that initializes telemetry based on configuration. Platform selection is explicit in the configuration file via the `platform` field.
 
-**Design Principle:** One `init()`, one `shutdown()`. Config drives composition. Platform selection is explicit in configuration, not in API calls.
+**Design Principle:** One `instrument()`, one `shutdown()`. Config drives composition. Platform selection is explicit in configuration, not in API calls.
 
 ---
 
@@ -23,7 +23,7 @@ llmops/
 ├── exceptions.py            # ConfigurationError
 ├── api/
 │   ├── __init__.py          # Public API re-exports
-│   ├── _init.py             # init(), shutdown(), is_configured()
+│   ├── _init.py             # instrument(), shutdown(), is_configured()
 │   └── types.py             # Config, ServiceConfig, etc.
 ├── sdk/
 │   ├── __init__.py
@@ -56,13 +56,13 @@ llmops/
 
 ## 3. Public API
 
-### 3.1 `llmops.init()`
+### 3.1 `llmops.instrument()`
 
 Initialize telemetry and auto-instrumentation based on configuration.
 
 **Signature:**
 ```python
-def init(
+def instrument(
     config: str | Path | Config,
 ) -> None:
     """
@@ -91,7 +91,7 @@ def init(
 
     Example:
         >>> import llmops
-        >>> llmops.init(config="llmops.yaml")
+        >>> llmops.instrument(config="llmops.yaml")
         >>> # Your app code runs with auto-instrumentation enabled
     """
 ```
@@ -101,7 +101,7 @@ def init(
 import llmops
 
 # Using config file path
-llmops.init(config="llmops.yaml")
+llmops.instrument(config="llmops.yaml")
 ```
 
 **Environment Variable Fallback:**
@@ -109,7 +109,7 @@ llmops.init(config="llmops.yaml")
 import llmops
 
 # Falls back to LLMOPS_CONFIG_PATH if set
-llmops.init()
+llmops.instrument()
 ```
 
 **Programmatic Config:**
@@ -121,7 +121,7 @@ config = llmops.Config(
     service=llmops.ServiceConfig(name="my-service"),
     arize=llmops.ArizeConfig(endpoint="http://localhost:6006/v1/traces"),
 )
-llmops.init(config=config)
+llmops.instrument(config=config)
 ```
 
 ---
@@ -136,7 +136,7 @@ def shutdown() -> None:
     """
     Shutdown telemetry and flush buffered spans.
 
-    This function is automatically registered as an atexit handler by init().
+    This function is automatically registered as an atexit handler by instrument().
     Call explicitly for controlled shutdown in tests or long-running services.
     """
 ```
@@ -154,7 +154,7 @@ def is_configured() -> bool:
     Check if the SDK has been initialized.
 
     Returns:
-        True if init() has been called successfully, False otherwise.
+        True if instrument() has been called successfully, False otherwise.
     """
 ```
 
@@ -194,7 +194,7 @@ class ConfigurationError(Exception):
 
 | Variable | Purpose |
 |----------|---------|
-| `LLMOPS_CONFIG_PATH` | Path to config file when not passed to `init()` |
+| `LLMOPS_CONFIG_PATH` | Path to config file when not passed to `instrument()` |
 | `OTEL_EXPORTER_OTLP_CERTIFICATE` | Fallback for `certificate_file` (CA cert) |
 
 ### 4.3 YAML Schema
@@ -263,27 +263,27 @@ When platform-specific packages are not installed:
 
 ```python
 >>> import llmops
->>> llmops.init(config="llmops.yaml")  # with platform: arize
+>>> llmops.instrument(config="llmops.yaml")  # with platform: arize
 ConfigurationError: Arize platform requires 'arize-otel' package.
 Install with: pip install llmops[arize]
 ```
 
 **Key behaviors:**
 - `import llmops` always succeeds (no platform dependencies loaded)
-- Exporter modules loaded only when `init()` dispatches to them
+- Exporter modules loaded only when `instrument()` dispatches to them
 - Error message includes exact pip install command
 
 ### 5.2 Configuration Errors
 
 **Strict mode:**
 ```python
->>> llmops.init(config="missing.yaml")
+>>> llmops.instrument(config="missing.yaml")
 ConfigurationError: Configuration file not found: missing.yaml
 ```
 
 **Permissive mode:**
 ```python
->>> llmops.init(config="invalid.yaml")
+>>> llmops.instrument(config="invalid.yaml")
 # Logs warning, uses no-op TracerProvider, returns successfully
 ```
 
@@ -428,7 +428,7 @@ pip install llmops[all]
 
 | Function | Signature | Returns |
 |----------|-----------|---------|
-| `llmops.init` | `(config: str \| Path \| Config)` | `None` |
+| `llmops.instrument` | `(config: str \| Path \| Config)` | `None` |
 | `llmops.shutdown` | `()` | `None` |
 | `llmops.is_configured` | `()` | `bool` |
 
@@ -480,7 +480,7 @@ from llmops.exceptions import ConfigurationError as ConfigurationError
 
 __version__: str
 
-def init(config: str | Path | Config = ...) -> None: ...
+def instrument(config: str | Path | Config = ...) -> None: ...
 def shutdown() -> None: ...
 def is_configured() -> bool: ...
 ```

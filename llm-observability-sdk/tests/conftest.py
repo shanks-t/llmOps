@@ -279,7 +279,7 @@ def patched_arize_otel(
         @pytest.mark.disable_mock_sdk_telemetry
         def test_something(patched_arize_otel, tmp_path):
             # Create config and call code that imports arize.otel
-            llmops.init(config=config_path)
+            llmops.instrument(config=config_path)
             patched_arize_otel.assert_registered_with(space_id="test")
     """
 

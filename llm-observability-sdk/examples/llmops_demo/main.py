@@ -1,5 +1,5 @@
 """
-LLMOps Demo - Minimal FastAPI service demonstrating llmops.init()
+LLMOps Demo - Minimal FastAPI service demonstrating llmops.instrument()
 
 This example shows how to use the llmops SDK for auto-instrumentation
 of Google ADK with a simple YAML configuration file.
@@ -37,11 +37,13 @@ load_dotenv()
 
 class ChatRequest(BaseModel):
     message: str
+    context: str | None = None  # Optional context for grounded/faithful responses
 
 
 class ChatResponse(BaseModel):
     message: str
     response: str
+    context: str | None = None  # Echo back context if provided
 
 
 # =============================================================================
@@ -56,7 +58,7 @@ async def lifespan(app: FastAPI):
     config_path = Path(__file__).parent / "llmops.yaml"
 
     # Initialize telemetry using the llmops SDK
-    llmops.init(config=config_path)
+    llmops.instrument(config=config_path)
 
     print(f"[llmops_demo] Telemetry initialized with config: {config_path}")
 
@@ -69,7 +71,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="LLMOps Demo",
-    description="Minimal example demonstrating llmops.init() for auto-instrumentation",
+    description="Minimal example demonstrating llmops.instrument() for auto-instrumentation",
     version="0.1.0",
     lifespan=lifespan,
 )
@@ -86,7 +88,7 @@ async def root():
     return {
         "service": "LLMOps Demo",
         "version": "0.1.0",
-        "description": "Minimal example using llmops.init() for telemetry",
+        "description": "Minimal example using llmops.instrument() for telemetry",
         "endpoints": {
             "POST /chat": "Chat with the assistant (supports weather and time queries)",
             "GET /health": "Health check",
@@ -112,14 +114,30 @@ async def chat(request: ChatRequest):
     """Chat with the assistant.
 
     The assistant can help with weather and time queries for various cities.
+    Optionally provide context to get grounded responses (useful for testing
+    faithfulness/hallucination evaluation).
 
     Examples:
         - "What's the weather in Paris?"
         - "What time is it in Tokyo?"
         - "Tell me the weather and time in London"
+
+    With context (for faithfulness evaluation):
+        {
+            "message": "What is the capital of France?",
+            "context": "Paris is the capital and largest city of France."
+        }
     """
     # Import here to avoid circular imports and ensure instrumentation is applied
     from agents import assistant_agent, run_agent
 
-    response = await run_agent(assistant_agent, request.message)
-    return ChatResponse(message=request.message, response=response)
+    response = await run_agent(
+        assistant_agent,
+        request.message,
+        context=request.context,
+    )
+    return ChatResponse(
+        message=request.message,
+        response=response,
+        context=request.context,
+    )

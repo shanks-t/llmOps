@@ -1,4 +1,4 @@
-"""Main SDK entry points: init(), shutdown(), is_configured().
+"""Main SDK entry points: instrument(), shutdown(), is_configured().
 
 This module provides the primary public interface for the SDK.
 """
@@ -50,12 +50,12 @@ def _resolve_config_path(config_path: str | Path | None) -> Path:
         return Path(env_path)
 
     raise ConfigurationError(
-        f"No configuration path provided. Either pass a config path to init() "
+        f"No configuration path provided. Either pass a config path to instrument() "
         f"or set the {LLMOPS_CONFIG_PATH_ENV} environment variable."
     )
 
 
-def init(config: str | Path | Config | None = None) -> None:
+def instrument(config: str | Path | Config | None = None) -> None:
     """Initialize LLMOPS SDK with the given configuration.
 
     This is the single entry point for SDK initialization. Configuration
@@ -140,6 +140,6 @@ def is_configured() -> bool:
     """Check if the SDK has been initialized.
 
     Returns:
-        True if init() has been called successfully, False otherwise.
+        True if instrument() has been called successfully, False otherwise.
     """
     return _is_configured()

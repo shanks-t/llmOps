@@ -25,7 +25,7 @@ This is the "how systems like this should be built" document.
 
 | Layer | Responsibility | Stability | Dependencies |
 |-------|---------------|-----------|--------------|
-| **L5: Public API** | Developer-facing init(), decorators, enrichment | Stable | L4, L3 |
+| **L5: Public API** | Developer-facing instrument(), decorators, enrichment | Stable | L4, L3 |
 | **L4: Auto-instrumentation** | Backend instrumentor orchestration | Stable | L1, L0 |
 | **L3: Semantic Model** | SemanticKind, span lifecycle, context | Stable contract | L2 |
 | **L2: OTel Mapping** | Translate to gen_ai.* attributes | Internal | L1 |
@@ -70,12 +70,12 @@ The auto-instrumentation layer orchestrates backend-provided instrumentors based
 
 **Note on MLflow + Google ADK:** Per [MLflow ADK documentation](https://mlflow.org/docs/latest/genai/tracing/integrations/listing/google-adk/), Google ADK tracing uses OTLP-based export directly to MLflow, not `mlflow.autolog()` or `mlflow.tracing.enable()`. The SDK sets up an `OTLPSpanExporter` with the `x-mlflow-experiment-id` header.
 
-#### 2.4.2 init() Function
+#### 2.4.2 instrument() Function
 
-The `init()` function is the single entry point for auto-instrumentation:
+The `instrument()` function is the single entry point for auto-instrumentation:
 
 ```python
-def init(
+def instrument(
     config_path: str | None = None,
     *,
     backend: Literal["phoenix", "mlflow"] | None = None,
@@ -101,7 +101,7 @@ def init(
 ```python
 # Internal implementation (simplified)
 
-def init(config_path=None, *, backend=None, auto_instrument=True, **kwargs):
+def instrument(config_path=None, *, backend=None, auto_instrument=True, **kwargs):
     # 1. Load and validate configuration
     config = _load_config(config_path)
     config = _apply_overrides(config, backend=backend, **kwargs)
@@ -185,7 +185,7 @@ INVARIANT A1: Auto-instrumentation never modifies application behavior
 **Rules:**
 - Instrumentors MUST NOT change function return values
 - Instrumentors MUST NOT change exception propagation
-- Library patching happens at init() time, not at call time
+- Library patching happens at instrument() time, not at call time
 
 ```
 INVARIANT A2: Auto-instrumentation failures are non-fatal
